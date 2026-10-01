@@ -1,13 +1,13 @@
-# Pack Slip Maker
+# Packs Be Slippin'
 
 A standalone macOS app that turns the weekly order spreadsheet (.xlsx) into one
 print-ready PDF, one branded pack slip per customer. It runs fully offline, with no
 Python, terminal, or subscriptions needed on the Operator's Mac.
 
 - **Operator instructions (one page):** [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md).
-  The build turns this into `How to use Pack Slip Maker.pdf` inside the download zip.
+  The build turns this into `How to use Packs Be Slippin'.pdf` inside the download zip.
 - **Download the app:** GitHub → **Actions** → *Build macOS app* → latest run →
-  **Artifacts → Pack-Slip-Maker-mac**. Pushing a tag like `v1.0.0` also attaches the
+  **Artifacts → Packs-Be-Slippin-mac**. Pushing a tag like `v1.0.0` also attaches the
   zip to a GitHub Release.
 
 ## How it works
@@ -34,7 +34,7 @@ Half Letter, A4, and 4×6 label.
 Everything stays on the Operator's Mac (NFR-7):
 
 ```
-~/Library/Application Support/Pack Slip Maker/
+~/Library/Application Support/Packs Be Slippin'/
     mapping.json        column matches (FR-3)
     templates/*.json    layouts (FR-5)
     assets/             copied logo files
@@ -69,7 +69,7 @@ CI (`.github/workflows/build-macos.yml`) builds on every push. To build locally 
    pip install delocate pyinstaller==6.16.0
    python packaging/install_universal2_deps.py requirements.txt   # fuses arm64 + x86_64 wheels
    pyinstaller --noconfirm packaging/PackSlipMaker.spec
-   codesign --force --deep --sign - "dist/Pack Slip Maker.app"     # ad-hoc signature
+   codesign --force --deep --sign - "dist/Packs Be Slippin'.app"     # ad-hoc signature
    ```
 
 `packaging/hooks/hook-tkinterdnd2.py` replaces the stock hook so both the Intel and

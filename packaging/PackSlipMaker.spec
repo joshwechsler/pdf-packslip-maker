@@ -1,4 +1,4 @@
-# PyInstaller spec: builds "Pack Slip Maker.app" as a universal2 (Intel + Apple Silicon) bundle.
+# PyInstaller spec: builds "Packs Be Slippin'.app" as a universal2 (Intel + Apple Silicon) bundle.
 # Run on macOS:  pyinstaller --noconfirm packaging/PackSlipMaker.spec
 import os
 import sys

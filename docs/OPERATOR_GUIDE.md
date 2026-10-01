@@ -1,16 +1,16 @@
-# How to use Pack Slip Maker
+# How to use Packs Be Slippin'
 
 ## First time only (about 5 minutes)
 
-1. Double-click the zip file, then drag **Pack Slip Maker** into your **Applications** folder.
-2. Double-click **Pack Slip Maker**. A message says Apple can't check it. Click **Done**. This is expected.
-3. Open **System Settings → Privacy & Security**. Scroll down and click **Open Anyway** next to Pack Slip Maker. Enter your Mac password, then click **Open Anyway** again. (On older Macs: hold **Control**, click the app, choose **Open**, then **Open**.)
+1. Double-click the zip file, then drag **Packs Be Slippin'** into your **Applications** folder.
+2. Double-click **Packs Be Slippin'**. A message says Apple can't check it. Click **Done**. This is expected.
+3. Open **System Settings → Privacy & Security**. Scroll down and click **Open Anyway** next to Packs Be Slippin'. Enter your Mac password, then click **Open Anyway** again. (On older Macs: hold **Control**, click the app, choose **Open**, then **Open**.)
 4. Load your spreadsheet (see below). The first time, the app asks you to **match columns**. Check each row, then click **Save Matches**. You won't be asked again.
 
 ## Every week (about 2 minutes)
 
 1. In Google Sheets, open the order sheet and choose **File → Download → Microsoft Excel (.xlsx)**. It lands in your **Downloads** folder.
-2. Open **Pack Slip Maker**.
+2. Open **Packs Be Slippin'**.
 3. **Drag the downloaded file** onto the big box (or click **Browse…** and pick it).
 4. Check the **Delivery date**. It remembers your usual delivery day, so normally it's already right. Use the dropdown or **Calendar…** to change it. This date prints on every slip.
 5. Click **Generate Pack Slips for (date)**.

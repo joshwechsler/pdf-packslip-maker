@@ -57,7 +57,7 @@ def build(md_path, out_path):
             story.append(Spacer(1, 4))
     flush()
     doc = SimpleDocTemplate(out_path, pagesize=letter, leftMargin=54, rightMargin=54, topMargin=48,
-                            bottomMargin=48, title="How to use Pack Slip Maker")
+                            bottomMargin=48, title="How to use Packs Be Slippin'")
     doc.build(story)
 
 

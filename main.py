@@ -1,4 +1,4 @@
-"""Launch Pack Slip Maker. Run with:  python main.py"""
+"""Launch Packs Be Slippin'. Run with:  python main.py"""
 
 import sys
 

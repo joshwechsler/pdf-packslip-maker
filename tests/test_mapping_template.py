@@ -112,3 +112,18 @@ def test_total_items_placeholder():
     m = Mapping()
     el = T.make_element("text", 0, 0, 10, 10, text="Total items: {Total Items}")
     assert T.element_text(el, {"item_count": "7"}, m) == "Total items: 7"
+
+
+def test_settings_migrate_from_old_app_name(tmp_path, monkeypatch):
+    import sys
+    from pathlib import Path
+    from packslip import storage
+    monkeypatch.delenv("PACKSLIP_DATA_DIR", raising=False)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    old = tmp_path / "Library" / "Application Support" / "Pack Slip Maker"
+    (old / "templates").mkdir(parents=True)
+    (old / "mapping.json").write_text("{}")
+    new = storage.data_dir()
+    assert new.name == "Packs Be Slippin'"
+    assert (new / "mapping.json").exists() and not old.exists()

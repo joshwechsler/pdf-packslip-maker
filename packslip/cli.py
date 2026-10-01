@@ -1,9 +1,9 @@
 """Command-line entry points (for the Owner/CI, not the Operator).
 
-    "Pack Slip Maker" [file.xlsx]                 open the app (optionally with a file)
-    "Pack Slip Maker" --generate in.xlsx [--delivery-date YYYY-MM-DD] [--out out.pdf] [--template NAME]
-    "Pack Slip Maker" --selftest [--out out.pdf]  build a PDF from generated data; exit 0 if OK
-    "Pack Slip Maker" --selftest-gui              open and close every window; exit 0 if OK
+    "Packs Be Slippin'" [file.xlsx]                 open the app (optionally with a file)
+    "Packs Be Slippin'" --generate in.xlsx [--delivery-date YYYY-MM-DD] [--out out.pdf] [--template NAME]
+    "Packs Be Slippin'" --selftest [--out out.pdf]  build a PDF from generated data; exit 0 if OK
+    "Packs Be Slippin'" --selftest-gui              open and close every window; exit 0 if OK
 """
 
 from __future__ import annotations

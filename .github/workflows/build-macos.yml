@@ -46,8 +46,8 @@ jobs:
         # *other* architecture links to it (e.g. Pillow bundles zlib under a different
         # filename per arch, so each slice loads its own thin copy).
         run: |
-          APP="dist/Pack Slip Maker.app"
-          echo "Main executable: $(lipo -archs "$APP/Contents/MacOS/Pack Slip Maker")"
+          APP="dist/Packs Be Slippin'.app"
+          echo "Main executable: $(lipo -archs "$APP/Contents/MacOS/Packs Be Slippin'")"
           : > links.txt; : > thin.txt
           while IFS= read -r -d '' f; do
             file -b "$f" | grep -q "Mach-O" || continue
@@ -66,40 +66,42 @@ jobs:
 
       - name: Ad-hoc sign (required to launch on Apple Silicon)
         run: |
-          codesign --force --deep --sign - "dist/Pack Slip Maker.app"
-          codesign --verify --deep --strict --verbose=2 "dist/Pack Slip Maker.app"
+          codesign --force --deep --sign - "dist/Packs Be Slippin'.app"
+          codesign --verify --deep --strict --verbose=2 "dist/Packs Be Slippin'.app"
 
       - name: Self-test (Apple Silicon)
-        run: '"dist/Pack Slip Maker.app/Contents/MacOS/Pack Slip Maker" --selftest'
+        run: |
+          "dist/Packs Be Slippin'.app/Contents/MacOS/Packs Be Slippin'" --selftest
 
       - name: Self-test (Intel, via Rosetta)
         run: |
           if arch -x86_64 /usr/bin/true 2>/dev/null; then
-            arch -x86_64 "dist/Pack Slip Maker.app/Contents/MacOS/Pack Slip Maker" --selftest
+            arch -x86_64 "dist/Packs Be Slippin'.app/Contents/MacOS/Packs Be Slippin'" --selftest
           else
             echo "::warning::Rosetta isn't installed on this runner; Intel slice not executed."
           fi
 
       - name: GUI smoke test
         continue-on-error: true
-        run: '"dist/Pack Slip Maker.app/Contents/MacOS/Pack Slip Maker" --selftest-gui'
+        run: |
+          "dist/Packs Be Slippin'.app/Contents/MacOS/Packs Be Slippin'" --selftest-gui
 
       - name: Package zip (app + one-page instructions)
         run: |
-          mkdir -p "release/Pack Slip Maker"
-          python tools/make_guide_pdf.py docs/OPERATOR_GUIDE.md "release/Pack Slip Maker/How to use Pack Slip Maker.pdf"
-          ditto "dist/Pack Slip Maker.app" "release/Pack Slip Maker/Pack Slip Maker.app"
-          cd release && ditto -c -k --sequesterRsrc --keepParent "Pack Slip Maker" ../Pack-Slip-Maker-mac.zip
-          ls -lh ../Pack-Slip-Maker-mac.zip
+          mkdir -p "release/Packs Be Slippin'"
+          python tools/make_guide_pdf.py docs/OPERATOR_GUIDE.md "release/Packs Be Slippin'/How to use Packs Be Slippin'.pdf"
+          ditto "dist/Packs Be Slippin'.app" "release/Packs Be Slippin'/Packs Be Slippin'.app"
+          cd release && ditto -c -k --sequesterRsrc --keepParent "Packs Be Slippin'" ../Packs-Be-Slippin-mac.zip
+          ls -lh ../Packs-Be-Slippin-mac.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Pack-Slip-Maker-mac
-          path: Pack-Slip-Maker-mac.zip
+          name: Packs-Be-Slippin-mac
+          path: Packs-Be-Slippin-mac.zip
           retention-days: 90
 
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: Pack-Slip-Maker-mac.zip
+          files: Packs-Be-Slippin-mac.zip

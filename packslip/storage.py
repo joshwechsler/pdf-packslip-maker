@@ -4,7 +4,7 @@ The spec asks for config "alongside the app", but a macOS .app bundle is
 read-only once installed (and may be run from a randomized, read-only path by
 Gatekeeper), so files live in the standard per-user folder instead:
 
-    ~/Library/Application Support/Pack Slip Maker/
+    ~/Library/Application Support/Packs Be Slippin'/
         mapping.json
         settings.json
         templates/<name>.json
@@ -21,7 +21,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import APP_NAME
+from . import APP_NAME, LEGACY_APP_NAME
 
 
 def data_dir() -> Path:
@@ -29,7 +29,15 @@ def data_dir() -> Path:
     if override:
         base = Path(override)
     elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support" / APP_NAME
+        support = Path.home() / "Library" / "Application Support"
+        base = support / APP_NAME
+        legacy = support / LEGACY_APP_NAME
+        if legacy.is_dir() and not base.exists():
+            # The app was renamed; carry over the saved mapping, layouts and logo.
+            try:
+                legacy.rename(base)
+            except OSError:
+                pass
     else:
         base = Path.home() / ".packslip-maker"
     base.mkdir(parents=True, exist_ok=True)
