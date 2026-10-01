@@ -5,7 +5,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 S = 1024
-NAVY, GOLD, PAPER, LINE = (31, 58, 95, 255), (200, 162, 74, 255), (255, 255, 255, 255), (196, 204, 214, 255)
+NAVY, GOLD, PAPER, LINE = (17, 17, 17, 255), (85, 85, 85, 255), (255, 255, 255, 255), (200, 200, 200, 255)
 
 im = Image.new("RGBA", (S, S), (0, 0, 0, 0))
 d = ImageDraw.Draw(im)

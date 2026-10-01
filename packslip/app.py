@@ -26,7 +26,7 @@ except Exception:  # pragma: no cover - drag and drop is a nicety; Browse always
     TkinterDnD = None
     DND_FILES = None
 
-ACCENT = "#1F3A5F"
+ACCENT = "#111111"
 DROP_BG = "#F4F6F9"
 DROP_HOVER = "#E3ECF7"
 

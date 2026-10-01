@@ -31,8 +31,10 @@ DEFAULT_PAGE = "Letter (8.5 × 11 in)"
 
 FONTS = ["Helvetica", "Times", "Courier"]
 
-# Placeholder brand colours until the Owner supplies real ones (SRS §8).
-DEFAULT_BRAND = {"primary": "#1F3A5F", "accent": "#C8A24A"}
+# Black and white, to match the logo and print cleanly on any printer.
+DEFAULT_BRAND = {"primary": "#000000", "accent": "#555555"}
+# Earlier placeholder colours; layouts still using them are switched to black and white on load.
+_OLD_PLACEHOLDER_BRAND = {"primary": "#1F3A5F", "accent": "#C8A24A"}
 
 ELEMENT_DEFAULTS = {
     "field": {"field": "", "label": "", "font": "Helvetica", "size": 11, "bold": False, "italic": False,
@@ -41,7 +43,7 @@ ELEMENT_DEFAULTS = {
     "text": {"text": "Text", "font": "Helvetica", "size": 11, "bold": False, "italic": False,
              "align": "left", "color": "#222222", "fill": "", "border": "", "shrink": True},
     "logo": {"image": ""},
-    "box": {"fill": "#1F3A5F", "border": "", "border_width": 1.0, "radius": 0.0},
+    "box": {"fill": "brand:primary", "border": "", "border_width": 1.0, "radius": 0.0},
     "items": {"font": "Helvetica", "size": 13, "color": "#222222", "show_boxes": True,
               "row_lines": True, "line_color": "#DDDDDD", "shrink": True},
 }
@@ -113,7 +115,9 @@ class Template:
     @classmethod
     def from_json(cls, data: dict) -> "Template":
         brand = dict(DEFAULT_BRAND)
-        brand.update(data.get("brand") or {})
+        saved = data.get("brand") or {}
+        if {k: str(v).upper() for k, v in saved.items()} != _OLD_PLACEHOLDER_BRAND:
+            brand.update(saved)
         page = data.get("page") if data.get("page") in PAGE_SIZES else DEFAULT_PAGE
         return cls(name=data.get("name") or "Untitled", page=page, brand=brand,
                    elements=[normalize_element(e) for e in data.get("elements") or []])

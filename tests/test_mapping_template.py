@@ -127,3 +127,10 @@ def test_settings_migrate_from_old_app_name(tmp_path, monkeypatch):
     new = storage.data_dir()
     assert new.name == "Packs Be Slippin'"
     assert (new / "mapping.json").exists() and not old.exists()
+
+
+def test_old_navy_gold_layouts_switch_to_black_and_white():
+    t = T.Template.from_json({"name": "x", "brand": {"primary": "#1F3A5F", "accent": "#C8A24A"}})
+    assert t.brand == T.DEFAULT_BRAND == {"primary": "#000000", "accent": "#555555"}
+    custom = T.Template.from_json({"name": "y", "brand": {"primary": "#FF0000", "accent": "#C8A24A"}})
+    assert custom.brand["primary"] == "#FF0000"  # colours someone chose are kept
