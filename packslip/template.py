@@ -179,10 +179,11 @@ BUNDLED_ASSETS = Path(__file__).resolve().parent / "assets"
 
 
 def install_default_logo() -> str:
-    """Copy the bundled logo into the user's assets folder (once). Returns its asset name."""
+    """Copy the bundled logo into the user's assets folder, refreshing it if a new
+    app version ships a changed logo. (Logos the user picks are stored under other names.)"""
     dest = storage.assets_dir() / DEFAULT_LOGO
     src = BUNDLED_ASSETS / DEFAULT_LOGO
-    if not dest.exists() and src.exists():
+    if src.exists() and (not dest.exists() or dest.read_bytes() != src.read_bytes()):
         shutil.copyfile(src, dest)
     return DEFAULT_LOGO if dest.exists() else ""
 

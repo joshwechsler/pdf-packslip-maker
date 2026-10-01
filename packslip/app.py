@@ -47,6 +47,7 @@ class App:
         self.mapping: Mapping | None = load_mapping()
         self.settings = storage.load_settings()
         T.ensure_default_template()
+        T.install_default_logo()  # refresh the built-in logo after an app update
 
         root.title(APP_NAME)
         root.minsize(560, 520)
