@@ -41,17 +41,27 @@ jobs:
       - name: Build .app
         run: pyinstaller --noconfirm packaging/PackSlipMaker.spec
 
-      - name: Verify every binary is universal (Intel + Apple Silicon)
+      - name: Verify every binary runs on Intel + Apple Silicon
+        # Fat binaries pass. A single-arch library is allowed only if no slice of the
+        # *other* architecture links to it (e.g. Pillow bundles zlib under a different
+        # filename per arch, so each slice loads its own thin copy).
         run: |
           APP="dist/Pack Slip Maker.app"
           echo "Main executable: $(lipo -archs "$APP/Contents/MacOS/Pack Slip Maker")"
-          bad=0
+          : > links.txt; : > thin.txt
           while IFS= read -r -d '' f; do
             file -b "$f" | grep -q "Mach-O" || continue
-            case "$f" in */tkdnd/osx-*) continue ;; esac   # per-arch on purpose; picked at runtime
+            case "$f" in */tkdnd/osx-*) continue ;; esac   # per-arch on purpose; chosen at runtime
             archs="$(lipo -archs "$f")"
-            if [[ "$archs" != *x86_64* || "$archs" != *arm64* ]]; then echo "THIN: $f ($archs)"; bad=1; fi
+            for a in $archs; do otool -arch "$a" -L "$f" | tail -n +2 | awk -v a="$a" '{print a, $1}' >> links.txt; done
+            if [[ "$archs" != *x86_64* || "$archs" != *arm64* ]]; then echo "$archs $(basename "$f")" >> thin.txt; fi
           done < <(find "$APP" -type f -print0)
+          bad=0
+          while read -r arch name; do
+            other=arm64; [[ "$arch" == arm64 ]] && other=x86_64
+            if grep -q "^$other .*/$name$" links.txt; then echo "BROKEN: $name is $arch-only but $other code links to it"; bad=1
+            else echo "ok (single-arch, used only by $arch): $name"; fi
+          done < thin.txt
           exit $bad
 
       - name: Ad-hoc sign (required to launch on Apple Silicon)
