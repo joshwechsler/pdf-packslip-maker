@@ -13,6 +13,7 @@ a = Analysis(
     [os.path.join(ROOT, "main.py")],
     pathex=[ROOT],
     hookspath=[os.path.join(SPECPATH, "hooks")],
+    datas=[(os.path.join(ROOT, "packslip", "assets"), "packslip/assets")],
     hiddenimports=["PIL._tkinter_finder", "PIL.ImageTk"],
     excludes=["pandas", "numpy", "matplotlib", "IPython", "pytest", "pypdf", "PyQt5", "PySide6"],
     noarchive=False,

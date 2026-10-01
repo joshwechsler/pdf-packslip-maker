@@ -111,5 +111,5 @@ menu item** with the quantity in the cell, then a `TOTALS` row:
 | Item | Status |
 | --- | --- |
 | Real spreadsheet headers | ✅ Received. Default fields and layout are built around them |
-| Logo + brand colors | Pending. Placeholder is an empty logo box with navy `#1F3A5F` and gold `#C8A24A` (Edit Layout → Logo / Brand, no rebuild) |
-| Field list for the slip | Draft: name, address, phone, order date, items with tick boxes, total items, delivery instructions. Total and Paid are available but left off |
+| Logo + brand colors | ✅ Logo: black "MEAL ⊕ PREP" wordmark (`packslip/assets/meal_prep_logo.png`, redraw with `tools/make_logo.py`), installed as the default on first run. Brand colors are still placeholder navy `#1F3A5F` / gold `#C8A24A` (Edit Layout → Brand, no rebuild) |
+| Field list for the slip | ✅ Name, address, phone, order date, items with tick boxes, total items, delivery instructions. Total Cost and Paid are matched but deliberately left off the slip |

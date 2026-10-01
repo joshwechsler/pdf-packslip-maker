@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import copy
 import re
+import shutil
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -173,13 +174,26 @@ def resolve_color(value: str, brand: dict) -> str:
     return value
 
 
+DEFAULT_LOGO = "meal_prep_logo.png"
+BUNDLED_ASSETS = Path(__file__).resolve().parent / "assets"
+
+
+def install_default_logo() -> str:
+    """Copy the bundled logo into the user's assets folder (once). Returns its asset name."""
+    dest = storage.assets_dir() / DEFAULT_LOGO
+    src = BUNDLED_ASSETS / DEFAULT_LOGO
+    if not dest.exists() and src.exists():
+        shutil.copyfile(src, dest)
+    return DEFAULT_LOGO if dest.exists() else ""
+
+
 def default_template(name: str = "Standard") -> Template:
     """Starting layout, built around the weekly order sheet's columns."""
     E = make_element
     P, A = "brand:primary", "brand:accent"
     els = [
         E("box", 0, 0, 612, 12, fill=P),
-        E("logo", 36, 34, 170, 64),
+        E("logo", 36, 40, 250, 30, image=install_default_logo()),
         E("text", 316, 36, 260, 30, text="PACKING SLIP", size=24, bold=True, align="right", color=P),
         E("field", 316, 72, 260, 16, field="order_date", label="Ordered:", size=11, align="right"),
         E("box", 36, 116, 540, 2, fill=A),

@@ -20,7 +20,6 @@ def _selftest(out: str | None) -> int:
     import datetime as dt
 
     from openpyxl import Workbook
-    from PIL import Image, ImageDraw
 
     tmp = Path(tempfile.mkdtemp(prefix="packslip-selftest-"))
     os.environ["PACKSLIP_DATA_DIR"] = str(tmp / "data")
@@ -44,27 +43,21 @@ def _selftest(out: str | None) -> int:
     xlsx = tmp / "orders.xlsx"
     wb.save(xlsx)
 
-    logo = storage.assets_dir() / "logo.png"
-    im = Image.new("RGBA", (300, 100), (31, 58, 95, 255))
-    ImageDraw.Draw(im).rectangle((20, 20, 280, 80), fill=(200, 162, 74, 255))
-    im.save(logo)
-
     sheet = load(xlsx)
     m = auto_map(Mapping(), sheet.headers, sheet.rows)
     tpl = T.default_template()
-    for el in tpl.elements:
-        if el["type"] == "logo":
-            el["image"] = "logo.png"
+    logo_ok = any(el["type"] == "logo" and el.get("image") and (storage.assets_dir() / el["image"]).exists()
+                  for el in tpl.elements)
     out_path = Path(out) if out else tmp / "selftest.pdf"
     t0 = time.perf_counter()
     pages = generate_pdf(out_path, tpl, m, sheet)
     secs = time.perf_counter() - t0
     size = out_path.stat().st_size
     items = m.item_headers(sheet.headers)
-    ok = (pages == rows and size > 10_000 and secs < 30 and m.items_mode == "columns" and items == menu
+    ok = (logo_ok and pages == rows and size > 10_000 and secs < 30 and m.items_mode == "columns" and items == menu
           and m.columns.get("customer_name") == "Customer Name")
     print(f"selftest: pages={pages} size={size} seconds={secs:.2f} items={items} mapped={m.columns} "
-          f"-> {'OK' if ok else 'FAIL'}")
+          f"logo={logo_ok} -> {'OK' if ok else 'FAIL'}")
     return 0 if ok else 1
 
 
