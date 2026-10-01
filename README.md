@@ -24,7 +24,7 @@ The designer preview and the PDF use the same text-fitting code (reportlab font
 metrics), so lines wrap in the same places on screen and on paper. Long values shrink
 to fit their box, then truncate with "...".
 
-**Designer extras:** text items accept `{Field Name}` placeholders (for example
+**Designer extras:** an **Item List** element (tick box, quantity, dish name), text items accept `{Field Name}` placeholders (for example
 `{City}, {State} {Zip}`), and field items can split a cell into one line per item
 (at newlines, commas, or semicolons) with optional bullets. Page sizes: Letter,
 Half Letter, A4, and 4×6 label.
@@ -88,12 +88,28 @@ Apple Silicon drag-and-drop libraries are bundled.
 - **Fonts:** the built-in PDF fonts are Helvetica, Times, and Courier, so the app needs
   no font files. Characters outside Western European (such as emoji or CJK) print as `?`.
 
+## Real spreadsheet format
+
+The weekly Google Sheet (downloaded as .xlsx) has **one row per customer** and **one column per
+menu item** with the quantity in the cell, then a `TOTALS` row:
+
+`Order Received | Customer Name | Phone Number | Address | <dish> … <dish> | Delivery Fee | Total Cost | Paid | Delivery Instructions`
+
+- Menu items are "every column after **Address** and before **Delivery Fee**". The rule is
+  stored by those two anchor headings, not by dish names, so a new menu each week needs no
+  remapping. Both anchors can be changed on the mapping screen.
+- Only dishes with a quantity above 0 print. The **Item List** layout element shows a tick box,
+  the quantity and the dish name, and `{Total Items}` gives the sum of quantities.
+- Rows whose cell reads `TOTAL`, `TOTALS`, `Grand Total` or `Subtotal` are skipped.
+- 10-digit phone numbers print as `(203) 555-0147`.
+- Sheets with all items in one column are still supported ("All items are listed in one column").
+
+`sample/sample_orders.xlsx` is fake data in this exact shape.
+
 ## Open items (SRS §8)
 
-Placeholders are in place, and each item can be swapped in without code changes:
-
-| Item | Placeholder now | Where to change |
-| --- | --- | --- |
-| Real spreadsheet headers | `sample/sample_orders.xlsx` (fake data) | Remap Fields in the app; aliases in `mapping.py` `DEFAULT_FIELDS` |
-| Logo + brand colors | Empty logo box, navy `#1F3A5F` / gold `#C8A24A` | Edit Layout → Logo / Brand; defaults in `template.py` |
-| Initial field list | Customer, Order #, Delivery Date, Address, Phone, Items, Qty, Notes | `mapping.py` `DEFAULT_FIELDS`, `template.py` `default_template()` |
+| Item | Status |
+| --- | --- |
+| Real spreadsheet headers | ✅ Received. Default fields and layout are built around them |
+| Logo + brand colors | Pending. Placeholder is an empty logo box with navy `#1F3A5F` and gold `#C8A24A` (Edit Layout → Logo / Brand, no rebuild) |
+| Field list for the slip | Draft: name, address, phone, order date, items with tick boxes, total items, delivery instructions. Total and Paid are available but left off |

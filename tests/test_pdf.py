@@ -77,3 +77,28 @@ def test_default_output_path_never_overwrites(tmp_path):
     first.write_bytes(b"x")
     second = default_output_path(src)
     assert second != first and second.name.endswith("(2).pdf")
+
+
+def test_real_shaped_sample_renders_items_table(tmp_path):
+    from pathlib import Path
+    from packslip.mapping import auto_map
+    sheet = load(Path(__file__).resolve().parent.parent / "sample" / "sample_orders.xlsx")
+    assert len(sheet.rows) == 12  # TOTALS row excluded
+    m = auto_map(Mapping(), sheet.headers, sheet.rows)
+    out = tmp_path / "s.pdf"
+    generate_pdf(out, T.default_template(), m, sheet)
+    reader = PdfReader(out)
+    assert len(reader.pages) == 12
+    first = sheet.rows[0]
+    ordered = [h for h in m.item_headers(sheet.headers) if first[h]]
+    text = reader.pages[0].extract_text()
+    assert ordered and all(name in text for name in ordered)
+    assert "Total items:" in text and "{Total Items}" not in text
+
+
+def test_items_overflow_shows_more_line():
+    from packslip.layout import items_primitives
+    el = T.make_element("items", 0, 0, 300, 60, shrink=False)
+    prims = items_primitives(el, [(f"Item {i}", "1") for i in range(20)], "#000000", "#cccccc")
+    texts = [p[3] for p in prims if p[0] == "text"]
+    assert any(t.startswith("+ ") and "more items" in t for t in texts)

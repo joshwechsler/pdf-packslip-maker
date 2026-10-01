@@ -54,3 +54,62 @@ def test_bad_template_json_is_normalized():
     el = t.elements[0]
     assert t.page == T.DEFAULT_PAGE
     assert el["x"] == 5.0 and el["w"] == 1.0 and el["font"] == "Helvetica" and el["id"]
+
+
+REAL_HEADERS = ["Order Received", "Customer Name", "Phone Number", "Address", "Backyard Italian Pasta",
+                "Orange Chicken", "Insulated Cooler Bag", "Delivery Fee", "Total Cost", "Paid",
+                "Delivery Instructions"]
+
+
+def _real_rows():
+    vals = [["Sep 8, 2026 7:29 PM", "Pat", "2035550147", "1 Main St", "1", "", "2", "0", "$89.50", "No", ""],
+            ["Sep 8, 2026 8:00 PM", "Lee", "2035550100", "2 Oak St", "", "3", "", "5", "$40.00", "Yes", "Side door"]]
+    return [dict(zip(REAL_HEADERS, v)) for v in vals]
+
+
+def test_auto_map_detects_menu_item_columns():
+    from packslip.mapping import auto_map
+    m = auto_map(Mapping(), REAL_HEADERS, _real_rows())
+    assert m.items_mode == "columns"
+    assert (m.items_after, m.items_before) == ("Address", "Delivery Fee")
+    assert m.item_headers(REAL_HEADERS) == ["Backyard Italian Pasta", "Orange Chicken", "Insulated Cooler Bag"]
+    assert m.columns["order_date"] == "Order Received" and m.columns["notes"] == "Delivery Instructions"
+    assert "order_number" not in m.columns  # "Order Received" must not be taken as an order number
+
+
+def test_item_rows_skip_unordered_and_compute_totals():
+    from packslip.mapping import ITEMS_KEY, auto_map
+    m = auto_map(Mapping(), REAL_HEADERS, _real_rows())
+    v = m.values_for_row(_real_rows()[0])
+    assert v[ITEMS_KEY] == [("Backyard Italian Pasta", "1"), ("Insulated Cooler Bag", "2")]
+    assert v["item_count"] == "3" and v["phone"] == "(203) 555-0147"
+    assert v["items"] == "Backyard Italian Pasta\nInsulated Cooler Bag"
+
+
+def test_menu_change_next_week_still_works():
+    from packslip.mapping import auto_map
+    m = auto_map(Mapping(), REAL_HEADERS, _real_rows())
+    next_week = REAL_HEADERS[:4] + ["Lemon Salmon", "Beef Tacos", "Banana Bread", "Cooler Bag"] + REAL_HEADERS[7:]
+    assert m.item_headers(next_week) == ["Lemon Salmon", "Beef Tacos", "Banana Bread", "Cooler Bag"]
+    assert m.missing_columns(next_week) == []
+
+
+def test_missing_anchor_column_is_reported():
+    from packslip.mapping import auto_map
+    m = auto_map(Mapping(), REAL_HEADERS, _real_rows())
+    renamed = [h if h != "Delivery Fee" else "Delivery Charge" for h in REAL_HEADERS]
+    assert ("End of menu items", "Delivery Fee") in m.missing_columns(renamed)
+
+
+def test_mapping_v2_roundtrip():
+    from packslip.mapping import auto_map
+    m = auto_map(Mapping(), REAL_HEADERS, _real_rows())
+    save_mapping(m)
+    m2 = load_mapping()
+    assert (m2.items_mode, m2.items_after, m2.items_before) == ("columns", "Address", "Delivery Fee")
+
+
+def test_total_items_placeholder():
+    m = Mapping()
+    el = T.make_element("text", 0, 0, 10, 10, text="Total items: {Total Items}")
+    assert T.element_text(el, {"item_count": "7"}, m) == "Total items: 7"

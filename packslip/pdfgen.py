@@ -11,8 +11,8 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas as rl_canvas
 
 from . import APP_NAME, storage
-from .layout import ascent, fit_text, inner_box, line_width
-from .mapping import Mapping
+from .layout import ascent, fit_text, inner_box, items_primitives, line_width, pdf_font
+from .mapping import ITEMS_KEY, Mapping
 from .spreadsheet import Sheet
 from .template import Template, element_text, resolve_color
 
@@ -78,6 +78,13 @@ def draw_page(c, template: Template, values: dict[str, str], mapping: Mapping, i
                 c.drawImage(img, x, flip(y, h), w, h, preserveAspectRatio=True, anchor="c", mask="auto")
             continue
 
+        if etype == "items":
+            color = resolve_color(el.get("color", "#222222"), brand) or "#222222"
+            line_color = resolve_color(el.get("line_color", ""), brand)
+            for prim in items_primitives(el, values.get(ITEMS_KEY, []), color, line_color):
+                _draw_primitive(c, prim, page_h)
+            continue
+
         if etype not in ("field", "text"):
             continue
         text = element_text(el, values, mapping)
@@ -98,6 +105,32 @@ def draw_page(c, template: Template, values: dict[str, str], mapping: Mapping, i
                 c.drawString(ix, ly, line)
 
 
+def _draw_primitive(c, prim, page_h: float) -> None:
+    kind = prim[0]
+    if kind == "text":
+        _, x, base, text, family, bold, italic, size, color, align = prim
+        c.setFillColor(_color(color))
+        c.setFont(pdf_font(family, bold, italic), size)
+        if align == "right":
+            c.drawRightString(x, page_h - base, text)
+        else:
+            c.drawString(x, page_h - base, text)
+    elif kind == "rect":
+        _, x, y, w, h, color = prim
+        c.saveState()
+        c.setStrokeColor(_color(color))
+        c.setLineWidth(0.9)
+        c.rect(x, page_h - y - h, w, h, stroke=1, fill=0)
+        c.restoreState()
+    elif kind == "line":
+        _, x1, y1, x2, y2, color = prim
+        c.saveState()
+        c.setStrokeColor(_color(color))
+        c.setLineWidth(0.5)
+        c.line(x1, page_h - y1, x2, page_h - y2)
+        c.restoreState()
+
+
 def check_ready(template: Template, mapping: Mapping, sheet: Sheet) -> None:
     """Raise GenerateError (FR-9) if mapped columns used by the layout are missing."""
     used = template.used_field_keys(mapping)
@@ -110,7 +143,7 @@ def check_ready(template: Template, mapping: Mapping, sheet: Sheet) -> None:
             "The column headings may have been renamed. Click “Remap Fields” to match "
             "them up again, then generate."
         )
-    if not any(mapping.columns.get(k) for k in used):
+    if mapping.items_mode != "columns" and not any(mapping.columns.get(k) for k in used):
         raise GenerateError(
             "None of the fields on this layout are matched to a spreadsheet column yet.\n\n"
             "Click “Remap Fields” to match the pack-slip fields to your spreadsheet's columns."

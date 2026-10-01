@@ -7,6 +7,7 @@ Element types:
     text   – fixed text; may contain {Field Name} placeholders
     logo   – an image file from the assets folder
     box    – a filled/outlined rectangle (brand bars, dividers, panels)
+    items  – the customer's order as a table: tick box, quantity, item name
 """
 
 from __future__ import annotations
@@ -40,6 +41,8 @@ ELEMENT_DEFAULTS = {
              "align": "left", "color": "#222222", "fill": "", "border": "", "shrink": True},
     "logo": {"image": ""},
     "box": {"fill": "#1F3A5F", "border": "", "border_width": 1.0, "radius": 0.0},
+    "items": {"font": "Helvetica", "size": 13, "color": "#222222", "show_boxes": True,
+              "row_lines": True, "line_color": "#DDDDDD", "shrink": True},
 }
 
 
@@ -66,7 +69,7 @@ def normalize_element(el: dict) -> dict:
         out[k] = float(out.get(k, 0) or 0)
     out["w"] = max(out["w"], 1.0)
     out["h"] = max(out["h"], 1.0)
-    if etype in ("field", "text"):
+    if etype in ("field", "text", "items"):
         out["size"] = float(out.get("size") or 11)
         if out.get("font") not in FONTS:
             out["font"] = "Helvetica"
@@ -94,6 +97,8 @@ class Template:
 
     def used_field_keys(self, mapping=None) -> set[str]:
         keys = {el["field"] for el in self.elements if el["type"] == "field" and el.get("field")}
+        if any(el["type"] == "items" for el in self.elements):
+            keys |= {"items", "quantity", "item_count"}
         if mapping is not None:
             for el in self.elements:
                 if el["type"] == "text":
@@ -124,7 +129,7 @@ _PLACEHOLDER = re.compile(r"\{([^{}]+)\}")
 
 def _lookup_key(token: str, mapping) -> str | None:
     t = token.strip().lower()
-    for f in mapping.fields:
+    for f in mapping.all_fields():
         if t in (f["key"].lower(), f["label"].lower()):
             return f["key"]
     return None
@@ -169,27 +174,26 @@ def resolve_color(value: str, brand: dict) -> str:
 
 
 def default_template(name: str = "Standard") -> Template:
-    """Starting layout (SRS §8 'initial field list' is pending; this is a first draft)."""
+    """Starting layout, built around the weekly order sheet's columns."""
     E = make_element
     P, A = "brand:primary", "brand:accent"
     els = [
         E("box", 0, 0, 612, 12, fill=P),
         E("logo", 36, 34, 170, 64),
         E("text", 316, 36, 260, 30, text="PACKING SLIP", size=24, bold=True, align="right", color=P),
-        E("field", 316, 70, 260, 16, field="order_number", label="Order #", size=11, align="right"),
-        E("field", 316, 87, 260, 16, field="delivery_date", label="Delivery:", size=11, align="right"),
+        E("field", 316, 72, 260, 16, field="order_date", label="Ordered:", size=11, align="right"),
         E("box", 36, 116, 540, 2, fill=A),
-        E("text", 36, 132, 300, 14, text="SHIP TO", size=9, bold=True, color=A),
-        E("field", 36, 147, 330, 22, field="customer_name", size=16, bold=True),
-        E("field", 36, 172, 330, 40, field="address", size=11),
-        E("field", 36, 214, 330, 16, field="phone", size=10, color="#555555"),
-        E("box", 36, 256, 540, 24, fill=P),
-        E("text", 46, 263, 300, 14, text="ITEM", size=10, bold=True, color="#FFFFFF"),
-        E("text", 476, 263, 90, 14, text="QTY", size=10, bold=True, align="right", color="#FFFFFF"),
-        E("field", 46, 290, 420, 350, field="items", size=12, split_lines=True, shrink=True),
-        E("field", 476, 290, 90, 350, field="quantity", size=12, split_lines=True, align="right"),
-        E("text", 36, 658, 300, 14, text="NOTES", size=9, bold=True, color=A),
-        E("field", 36, 673, 540, 56, field="notes", size=10, border="#CCCCCC"),
+        E("text", 36, 132, 300, 14, text="DELIVER TO", size=9, bold=True, color=A),
+        E("field", 36, 147, 360, 24, field="customer_name", size=18, bold=True),
+        E("field", 36, 174, 360, 32, field="address", size=11),
+        E("field", 36, 208, 360, 16, field="phone", size=11, color="#555555"),
+        E("box", 36, 244, 540, 26, fill=P),
+        E("text", 46, 252, 300, 14, text="ITEMS", size=10, bold=True, color="#FFFFFF"),
+        E("text", 306, 252, 260, 14, text="Total items: {Total Items}", size=10, bold=True,
+          align="right", color="#FFFFFF"),
+        E("items", 46, 280, 520, 360),
+        E("text", 36, 658, 300, 14, text="DELIVERY INSTRUCTIONS", size=9, bold=True, color=A),
+        E("field", 36, 673, 540, 56, field="notes", size=11, border="#CCCCCC"),
         E("text", 36, 748, 540, 16, text="Thank you for your order!", size=10, italic=True,
           align="center", color="#777777"),
     ]

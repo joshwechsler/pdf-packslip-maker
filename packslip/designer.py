@@ -19,8 +19,8 @@ from PIL import Image, ImageTk
 
 from . import storage
 from . import template as T
-from .layout import ascent, fit_text, inner_box
-from .mapping import Mapping
+from .layout import ascent, fit_text, inner_box, items_primitives
+from .mapping import ITEMS_KEY, Mapping
 from .pdfgen import render_preview_pdf
 from .spreadsheet import Sheet
 from .ui_common import ColorSwatch, ask_name, open_path
@@ -116,6 +116,7 @@ class Designer(tk.Toplevel):
         self.field_menu_btn["menu"] = self.field_menu
         self.field_menu_btn.pack(side="left", padx=4)
         self._rebuild_field_menu()
+        ttk.Button(bar2, text="Item List", command=self._add_items).pack(side="left", padx=2)
         ttk.Button(bar2, text="Text", command=self._add_text).pack(side="left", padx=2)
         ttk.Button(bar2, text="Logo…", command=self._add_logo).pack(side="left", padx=2)
         ttk.Button(bar2, text="Box / Line", command=self._add_box).pack(side="left", padx=2)
@@ -129,8 +130,9 @@ class Designer(tk.Toplevel):
 
     def _rebuild_field_menu(self):
         self.field_menu.delete(0, "end")
-        for f in self.mapping.fields:
-            mapped = self.mapping.columns.get(f["key"])
+        for f in self.mapping.all_fields():
+            mapped = self.mapping.columns.get(f["key"]) or f["key"] == "item_count" or (
+                f["key"] in ("items", "quantity") and self.mapping.items_mode == "columns")
             label = f["label"] if mapped else f"{f['label']}  (not matched to a column)"
             self.field_menu.add_command(label=label, command=lambda k=f["key"]: self._add_field(k))
 
@@ -247,6 +249,17 @@ class Designer(tk.Toplevel):
                     cv.create_text((ex0 + ex1) / 2, (ey0 + ey1) / 2, text="Your logo\n(select, then “Choose Image…”)",
                                    fill="#7C8A9C", justify="center", font=self._font("Helvetica", 11, False, False))
                 continue
+            if t == "items":
+                cv.create_rectangle(ex0, ey0, ex1, ey1, outline="#D6DEE8", dash=(2, 3))
+                color = T.resolve_color(el.get("color", "#222222"), brand) or "#222222"
+                line_color = T.resolve_color(el.get("line_color", ""), brand)
+                prims = items_primitives(el, values.get(ITEMS_KEY, []), color, line_color)
+                if not prims:
+                    cv.create_text(ex0 + 3, ey0 + 2, anchor="nw", fill="#9AA5B1", text="[Items – none ordered]",
+                                   font=self._font("Helvetica", max(int(9 * s), 8), False, True))
+                for prim in prims:
+                    self._draw_primitive(prim)
+                continue
             if t not in ("field", "text"):
                 continue
             # Designer-only outline so empty or white-on-white items are still findable.
@@ -284,6 +297,24 @@ class Designer(tk.Toplevel):
                                     fill="#FFFFFF", outline=SELECT, width=1.5)
         self._tk_images = self._tk_images[-60:]
         self._update_preview_label()
+
+    def _draw_primitive(self, prim):
+        cv, s = self.canvas, self.scale
+        kind = prim[0]
+        if kind == "text":
+            _, x, base, text, family, bold, italic, size, color, align = prim
+            f = self._font(family, int(round(size * s)), bold, italic)
+            y = self.oy + base * s - f.metrics("ascent")
+            cv.create_text(self.ox + x * s, y, text=text, anchor="ne" if align == "right" else "nw",
+                           font=f, fill=color)
+        elif kind == "rect":
+            _, x, y, w, h, color = prim
+            x0, y0 = self._c(x, y)
+            x1, y1 = self._c(x + w, y + h)
+            cv.create_rectangle(x0, y0, x1, y1, outline=color)
+        elif kind == "line":
+            _, x1, y1, x2, y2, color = prim
+            cv.create_line(*self._c(x1, y1), *self._c(x2, y2), fill=color)
 
     def _handles(self, el):
         x0, y0 = self._c(el["x"], el["y"])
@@ -406,6 +437,12 @@ class Designer(tk.Toplevel):
         x, y = self._place(w, h)
         self._append(T.make_element("field", x, y, w, h, field=key))
 
+    def _add_items(self):
+        pw, _ = self.tpl.page_size
+        w, h = min(400, pw - 72), 220
+        x, y = self._place(w, h)
+        self._append(T.make_element("items", x, y, w, h))
+
     def _add_text(self):
         w, h = 200, 18
         x, y = self._place(w, h)
@@ -504,7 +541,8 @@ class Designer(tk.Toplevel):
             ttk.Label(p, text="Click an item on the slip to change it, or use the Add buttons above.",
                       wraplength=290, foreground="#666666").pack(anchor="w", pady=4)
             return
-        titles = {"field": "Spreadsheet field", "text": "Text", "logo": "Logo", "box": "Box / Line"}
+        titles = {"field": "Spreadsheet field", "text": "Text", "logo": "Logo", "box": "Box / Line",
+                  "items": "Item list"}
         ttk.Label(p, text=titles[el["type"]], font=("Helvetica", 13, "bold")).pack(anchor="w")
         grid = ttk.Frame(p)
         grid.pack(fill="x", pady=6)
@@ -534,13 +572,13 @@ class Designer(tk.Toplevel):
 
         t = el["type"]
         if t == "field":
-            labels = [f["label"] for f in self.mapping.fields]
+            labels = [f["label"] for f in self.mapping.all_fields()]
             fvar = tk.StringVar(value=self.mapping.field_label(el.get("field", "")))
             combo = ttk.Combobox(grid, textvariable=fvar, values=labels, state="readonly", width=20)
             add_row("Shows", combo)
 
             def field_changed(*_):
-                for f in self.mapping.fields:
+                for f in self.mapping.all_fields():
                     if f["label"] == fvar.get():
                         el["field"] = f["key"]
                 self._mark_dirty()
@@ -567,6 +605,24 @@ class Designer(tk.Toplevel):
                 row=row[0], column=0, columnspan=2, sticky="w")
             row[0] += 1
 
+        if t == "items":
+            ttk.Label(grid, text="Lists every item this customer ordered, with quantity.",
+                      foreground="#666666", wraplength=280).grid(row=row[0], column=0, columnspan=2, sticky="w")
+            row[0] += 1
+            font_var = tk.StringVar(value=el["font"])
+            add_row("Font", ttk.Combobox(grid, textvariable=font_var, values=T.FONTS, state="readonly", width=12))
+            bind_var(font_var, "font")
+            size_var = tk.DoubleVar(value=el["size"])
+            add_row("Size", ttk.Spinbox(grid, from_=5, to=40, increment=1, textvariable=size_var, width=6))
+            bind_var(size_var, "size", lambda v: max(4.0, min(float(v), 60.0)))
+            add_row("Text color", swatch("color", allow_none=False))
+            add_row("Row lines", swatch("line_color"))
+            for key, text in (("show_boxes", "Tick boxes for packing"), ("row_lines", "Lines between items"),
+                              ("shrink", "Shrink text to fit the box")):
+                var = tk.BooleanVar(value=el.get(key, True))
+                ttk.Checkbutton(grid, text=text, variable=var).grid(row=row[0], column=0, columnspan=2, sticky="w")
+                row[0] += 1
+                bind_var(var, key)
         if t in ("field", "text"):
             font_var = tk.StringVar(value=el["font"])
             add_row("Font", ttk.Combobox(grid, textvariable=font_var, values=T.FONTS, state="readonly", width=12))

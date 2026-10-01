@@ -12,6 +12,9 @@ from openpyxl.utils import get_column_letter
 from openpyxl.utils.exceptions import InvalidFileException
 
 
+_TOTAL_LABELS = {"total", "totals", "grand total", "subtotal", "sum"}
+
+
 class SpreadsheetError(Exception):
     """A problem with the spreadsheet, worded for a non-technical reader."""
 
@@ -162,6 +165,8 @@ def load(path: str | Path, sheet_name: str | None = None) -> Sheet:
         values = [format_value(r[i]) if i < len(r) else "" for i in range(width)]
         if not any(values):
             continue
+        if any(v.strip().lower().rstrip(":") in _TOTAL_LABELS for v in values):
+            continue  # a summary line like "TOTALS", not a customer
         rows.append(dict(zip(headers, values)))
 
     if not rows:

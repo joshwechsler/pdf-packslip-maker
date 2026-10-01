@@ -6,11 +6,15 @@ import copy
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from .mapping import Mapping, guess_columns
+from .mapping import ITEM_KEYS, Mapping, auto_map, guess_columns
 from .spreadsheet import Sheet
 from .ui_common import ScrollFrame, center_on
 
 NOT_USED_LABEL = "(not used)"
+START_LABEL = "(first column)"
+END_LABEL = "(last column)"
+BUILT_IN_KEYS = {"customer_name", "phone", "address", "order_date", "delivery_date", "order_number",
+                 "notes", "total", "paid", "items", "quantity"}
 
 
 class MappingDialog(tk.Toplevel):
@@ -20,38 +24,31 @@ class MappingDialog(tk.Toplevel):
         super().__init__(master)
         self.title("Match Spreadsheet Columns")
         self.transient(master)
-        self.resizable(True, True)
+        self.minsize(800, 640)
         self.sheet = sheet
         self.result: Mapping | None = None
         first_time = mapping is None or mapping.is_empty()
         self.mapping = copy.deepcopy(mapping) if mapping else Mapping()
         if first_time:
-            self.mapping.columns = guess_columns(self.mapping.fields, sheet.headers)
+            auto_map(self.mapping, sheet.headers, sheet.rows)
         self.vars: dict[str, tk.StringVar] = {}
 
         outer = ttk.Frame(self, padding=16)
         outer.pack(fill="both", expand=True)
-
-        ttk.Label(outer, text="Match each pack-slip field to a column in your spreadsheet",
+        ttk.Label(outer, text="Match your spreadsheet's columns to the pack slip",
                   font=("Helvetica", 15, "bold")).pack(anchor="w")
-        intro = ("We've guessed the matches below. Check each one, change any that are wrong, "
-                 "and choose “(not used)” for fields you don't need.  This is saved and reused "
-                 "every week until you click “Remap Fields” again.")
-        ttk.Label(outer, text=intro, wraplength=640, foreground="#555555").pack(anchor="w", pady=(4, 12))
+        intro = ("We've guessed the matches below. Check them, fix any that are wrong, and choose "
+                 "“(not used)” for anything you don't need. This is saved and reused every week "
+                 "until you click “Remap Fields” again.")
+        ttk.Label(outer, text=intro, wraplength=760, foreground="#555555").pack(anchor="w", pady=(4, 10))
 
-        head = ttk.Frame(outer)
-        head.pack(fill="x")
-        for col, (txt, w) in enumerate((("Pack-slip field", 18), ("Spreadsheet column", 26),
-                                        (f"Example (first customer)", 30))):
-            ttk.Label(head, text=txt, width=w, font=("Helvetica", 12, "bold")).grid(row=0, column=col, sticky="w", padx=4)
-
-        self.scroll = ScrollFrame(outer, height=330)
-        self.scroll.pack(fill="both", expand=True, pady=(4, 8))
-        self.rows_frame = self.scroll.inner
-        self._build_rows()
+        self.scroll = ScrollFrame(outer, height=440)
+        self.scroll.pack(fill="both", expand=True)
+        self.body = self.scroll.inner
+        self._build()
 
         add = ttk.Frame(outer)
-        add.pack(fill="x", pady=(4, 8))
+        add.pack(fill="x", pady=(8, 4))
         ttk.Label(add, text="Need another field on the slip?").pack(side="left")
         self.new_field = tk.StringVar()
         entry = ttk.Entry(add, textvariable=self.new_field, width=22)
@@ -72,83 +69,146 @@ class MappingDialog(tk.Toplevel):
 
     # ---------------------------------------------------------------------
     def _example(self, header: str) -> str:
-        if not header or not self.sheet.rows:
+        if not header or header == NOT_USED_LABEL or not self.sheet.rows:
             return ""
         val = self.sheet.rows[0].get(header, "")
         val = " / ".join(p.strip() for p in val.splitlines() if p.strip())
-        return val if len(val) <= 40 else val[:39] + "…"
+        return val if len(val) <= 38 else val[:37] + "…"
 
-    def _build_rows(self):
-        for child in self.rows_frame.winfo_children():
+    def _section(self, text, row):
+        ttk.Label(self.body, text=text, font=("Helvetica", 13, "bold")).grid(
+            row=row, column=0, columnspan=4, sticky="w", pady=(10, 4))
+
+    def _field_row(self, f, r, options):
+        key = f["key"]
+        current = self.mapping.columns.get(key, "")
+        var = self.vars.setdefault(key, tk.StringVar())
+        var.set(current if current in self.sheet.headers else NOT_USED_LABEL)
+        ttk.Label(self.body, text=f["label"], width=20).grid(row=r, column=0, sticky="w", padx=4, pady=3)
+        combo = ttk.Combobox(self.body, textvariable=var, values=options, state="readonly", width=26)
+        combo.grid(row=r, column=1, sticky="w", padx=4, pady=3)
+        example = ttk.Label(self.body, text=self._example(var.get()), width=32, foreground="#666666")
+        example.grid(row=r, column=2, sticky="w", padx=4)
+        combo.bind("<<ComboboxSelected>>", lambda e: (example.configure(text=self._example(var.get())),
+                                                      self._update_items_preview()))
+        if key not in BUILT_IN_KEYS:
+            ttk.Button(self.body, text="Remove", width=7,
+                       command=lambda k=key: self._remove_field(k)).grid(row=r, column=3, padx=4)
+
+    def _build(self):
+        for child in self.body.winfo_children():
             child.destroy()
         options = [NOT_USED_LABEL] + self.sheet.headers
-        default_keys = {"customer_name", "order_number", "delivery_date", "address",
-                        "phone", "items", "quantity", "notes"}
-        for r, f in enumerate(self.mapping.fields):
-            key = f["key"]
-            current = self.mapping.columns.get(key, "")
-            if key not in self.vars:
-                self.vars[key] = tk.StringVar()
-            var = self.vars[key]
-            var.set(current if current in self.sheet.headers else NOT_USED_LABEL)
+        r = 0
+        self._section("Customer details", r)
+        r += 1
+        for f in self.mapping.fields:
+            if f["key"] in ITEM_KEYS:
+                continue
+            self._field_row(f, r, options)
+            r += 1
 
-            ttk.Label(self.rows_frame, text=f["label"], width=18).grid(row=r, column=0, sticky="w", padx=4, pady=3)
-            combo = ttk.Combobox(self.rows_frame, textvariable=var, values=options, state="readonly", width=26)
-            combo.grid(row=r, column=1, sticky="w", padx=4, pady=3)
-            example = ttk.Label(self.rows_frame, text=self._example(current), width=30, foreground="#666666")
-            example.grid(row=r, column=2, sticky="w", padx=4)
-            combo.bind("<<ComboboxSelected>>",
-                       lambda e, v=var, lab=example: lab.configure(
-                           text=self._example("" if v.get() == NOT_USED_LABEL else v.get())))
-            if key not in default_keys:
-                ttk.Button(self.rows_frame, text="Remove", width=7,
-                           command=lambda k=key: self._remove_field(k)).grid(row=r, column=3, padx=4)
-            if current and current not in self.sheet.headers:
-                ttk.Label(self.rows_frame, text=f"“{current}” not found", foreground="#B00020").grid(
-                    row=r, column=4, sticky="w")
+        self._section("What they ordered", r)
+        r += 1
+        self.mode = tk.StringVar(value=self.mapping.items_mode)
+        ttk.Radiobutton(self.body, text="Each menu item has its own column (quantity in each cell)",
+                        value="columns", variable=self.mode, command=self._update_items_preview).grid(
+            row=r, column=0, columnspan=4, sticky="w")
+        r += 1
+        span = ttk.Frame(self.body)
+        span.grid(row=r, column=0, columnspan=4, sticky="w", padx=(24, 0), pady=2)
+        ttk.Label(span, text="Menu items are the columns after").pack(side="left")
+        self.after_var = tk.StringVar(value=self.mapping.items_after or START_LABEL)
+        self.before_var = tk.StringVar(value=self.mapping.items_before or END_LABEL)
+        a = ttk.Combobox(span, textvariable=self.after_var, values=[START_LABEL] + self.sheet.headers,
+                         state="readonly", width=18)
+        a.pack(side="left", padx=4)
+        ttk.Label(span, text="and before").pack(side="left")
+        b = ttk.Combobox(span, textvariable=self.before_var, values=self.sheet.headers + [END_LABEL],
+                         state="readonly", width=18)
+        b.pack(side="left", padx=4)
+        for c in (a, b):
+            c.bind("<<ComboboxSelected>>", lambda e: (self.mode.set("columns"), self._update_items_preview()))
+        r += 1
+        self.items_preview = ttk.Label(self.body, text="", foreground="#1E7B34", wraplength=720)
+        self.items_preview.grid(row=r, column=0, columnspan=4, sticky="w", padx=(24, 0), pady=(0, 6))
+        r += 1
+        ttk.Radiobutton(self.body, text="All items are listed in one column", value="single",
+                        variable=self.mode, command=self._update_items_preview).grid(
+            row=r, column=0, columnspan=4, sticky="w")
+        r += 1
+        for f in self.mapping.fields:
+            if f["key"] in ITEM_KEYS:
+                self._field_row(f, r, options)
+                r += 1
+        self._update_items_preview()
 
     def _collect(self):
         for key, var in self.vars.items():
             v = var.get()
             self.mapping.columns[key] = "" if v == NOT_USED_LABEL else v
+        self.mapping.items_mode = self.mode.get()
+        after, before = self.after_var.get(), self.before_var.get()
+        self.mapping.items_after = "" if after == START_LABEL else after
+        self.mapping.items_before = "" if before == END_LABEL else before
+        if self.mapping.items_mode == "columns":
+            for k in ITEM_KEYS:
+                self.mapping.columns.pop(k, None)
+
+    def _update_items_preview(self):
+        self._collect()
+        if self.mapping.items_mode != "columns":
+            self.items_preview.configure(text="")
+            return
+        names = self.mapping.item_headers(self.sheet.headers)
+        if not names:
+            self.items_preview.configure(text="No columns in that range — pick different start/end columns.",
+                                         foreground="#B00020")
+            return
+        shown = ", ".join(names[:8]) + (f", and {len(names) - 8} more" if len(names) > 8 else "")
+        self.items_preview.configure(text=f"✓ Found {len(names)} menu items: {shown}", foreground="#1E7B34")
 
     def _auto(self):
-        self.mapping.columns = guess_columns(self.mapping.fields, self.sheet.headers)
-        self._build_rows()
+        auto_map(self.mapping, self.sheet.headers, self.sheet.rows)
+        self.vars.clear()
+        self._build()
 
     def _add_field(self):
         label = " ".join(self.new_field.get().split())
         if not label:
             return
-        if any(f["label"].lower() == label.lower() for f in self.mapping.fields):
+        if any(f["label"].lower() == label.lower() for f in self.mapping.all_fields()):
             messagebox.showinfo("Already there", f"There's already a field called “{label}”.", parent=self)
             return
         self._collect()
         key = self.mapping.add_field(label)
         self.mapping.columns[key] = guess_columns([self.mapping.fields[-1]], self.sheet.headers).get(key, "")
         self.new_field.set("")
-        self._build_rows()
-        self.scroll.canvas.after(50, lambda: self.scroll.canvas.yview_moveto(1.0))
+        self._build()
 
     def _remove_field(self, key):
         self._collect()
         self.mapping.remove_field(key)
         self.vars.pop(key, None)
-        self._build_rows()
+        self._build()
 
     def _save(self):
         self._collect()
-        if self.mapping.is_empty():
+        m = self.mapping
+        if m.is_empty():
             messagebox.showwarning("Nothing matched",
-                                   "Match at least one field to a spreadsheet column before saving.",
-                                   parent=self)
+                                   "Match at least one field to a spreadsheet column before saving.", parent=self)
             return
-        if not self.mapping.columns.get("customer_name") and any(
-                f["key"] == "customer_name" for f in self.mapping.fields):
+        if m.items_mode == "columns" and not m.item_headers(self.sheet.headers):
+            messagebox.showwarning("No menu items",
+                                   "No menu-item columns were found between the columns you picked. "
+                                   "Choose different start/end columns.", parent=self)
+            return
+        if not m.columns.get("customer_name"):
             if not messagebox.askyesno(
                     "No customer name?",
                     "“Customer Name” isn't matched to a column, so slips won't show who they're for.\n\n"
                     "Save anyway?", parent=self):
                 return
-        self.result = self.mapping
+        self.result = m
         self.destroy()

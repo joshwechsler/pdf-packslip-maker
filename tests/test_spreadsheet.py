@@ -61,3 +61,13 @@ def test_empty_and_header_only(make_xlsx):
         load(make_xlsx([], name="empty.xlsx"))
     with pytest.raises(SpreadsheetError, match="no customer rows"):
         load(make_xlsx([["Customer", "Items"]], name="hdr.xlsx"))
+
+
+def test_totals_row_is_skipped(make_xlsx):
+    s = load(make_xlsx([["Customer Name", "Pasta"], ["Pat", 1], [None, None], ["TOTALS", 1]]))
+    assert [r["Customer Name"] for r in s.rows] == ["Pat"]
+
+
+def test_bool_and_big_number_cells(make_xlsx):
+    s = load(make_xlsx([["Phone", "Paid"], [2035550147.0, False]]))
+    assert s.rows[0] == {"Phone": "2035550147", "Paid": "No"}

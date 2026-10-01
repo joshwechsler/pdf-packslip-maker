@@ -27,17 +27,20 @@ def _selftest(out: str | None) -> int:
 
     from . import storage
     from . import template as T
-    from .mapping import Mapping, guess_columns
+    from .mapping import Mapping, auto_map
     from .pdfgen import generate_pdf
     from .spreadsheet import load
 
     wb = Workbook()
     ws = wb.active
-    ws.append(["Order No", "Customer", "Delivery Date", "Address", "Phone", "Items", "Qty", "Notes"])
+    menu = ["Backyard Italian Pasta", "Orange Chicken", "Texas Turkey Chili", "Protein Overnight Oats"]
+    ws.append(["Order Received", "Customer Name", "Phone Number", "Address", *menu,
+               "Delivery Fee", "Total Cost", "Paid", "Delivery Instructions"])
     rows = 300
     for i in range(rows):
-        ws.append([1000 + i, f"Customer {i} Ünïcode", dt.datetime(2026, 10, 1), "1 Main St\nTown",
-                   "555-0100", "Bowl\nSalad\nBread", "1\n2\n3", "Leave at door" if i % 3 else None])
+        ws.append([dt.datetime(2026, 9, 8, 19, 29), f"Customer {i} Ünïcode", 2035550100, "1 Main St, Town, CT",
+                   1, i % 3, 2, None, 0, "$89.50", False, "Leave at door" if i % 3 else None])
+    ws.append([None, "TOTALS", None, None, 300, 300, 600, 0, 0, None])
     xlsx = tmp / "orders.xlsx"
     wb.save(xlsx)
 
@@ -47,8 +50,7 @@ def _selftest(out: str | None) -> int:
     im.save(logo)
 
     sheet = load(xlsx)
-    m = Mapping()
-    m.columns = guess_columns(m.fields, sheet.headers)
+    m = auto_map(Mapping(), sheet.headers, sheet.rows)
     tpl = T.default_template()
     for el in tpl.elements:
         if el["type"] == "logo":
@@ -58,8 +60,11 @@ def _selftest(out: str | None) -> int:
     pages = generate_pdf(out_path, tpl, m, sheet)
     secs = time.perf_counter() - t0
     size = out_path.stat().st_size
-    ok = pages == rows and size > 10_000 and secs < 30 and len([v for v in m.columns.values() if v]) == 8
-    print(f"selftest: pages={pages} size={size} seconds={secs:.2f} mapped={m.columns} -> {'OK' if ok else 'FAIL'}")
+    items = m.item_headers(sheet.headers)
+    ok = (pages == rows and size > 10_000 and secs < 30 and m.items_mode == "columns" and items == menu
+          and m.columns.get("customer_name") == "Customer Name")
+    print(f"selftest: pages={pages} size={size} seconds={secs:.2f} items={items} mapped={m.columns} "
+          f"-> {'OK' if ok else 'FAIL'}")
     return 0 if ok else 1
 
 
@@ -86,7 +91,7 @@ def _selftest_gui() -> int:
 
 def _generate(src: str, out: str | None, template_name: str | None) -> int:
     from . import template as T
-    from .mapping import Mapping, guess_columns, load_mapping
+    from .mapping import Mapping, auto_map, load_mapping
     from .pdfgen import GenerateError, default_output_path, generate_pdf
     from .spreadsheet import SpreadsheetError, load
 
@@ -97,8 +102,7 @@ def _generate(src: str, out: str | None, template_name: str | None) -> int:
         return 2
     m = load_mapping()
     if m is None or m.is_empty():
-        m = Mapping()
-        m.columns = guess_columns(m.fields, sheet.headers)
+        m = auto_map(Mapping(), sheet.headers, sheet.rows)
     names = T.ensure_default_template()
     tpl = T.load_template(template_name or names[0]) or T.default_template()
     out_path = Path(out) if out else default_output_path(sheet.path)

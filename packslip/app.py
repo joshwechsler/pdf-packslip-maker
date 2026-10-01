@@ -225,7 +225,13 @@ class App:
             self.map_status.configure(text="Fields: not matched to spreadsheet columns yet")
             return
         n = sum(1 for v in self.mapping.columns.values() if v)
-        self.map_status.configure(text=f"Fields: using your saved matches ({n} columns)")
+        text = f"Fields: using your saved matches ({n} columns"
+        if self.mapping.items_mode == "columns":
+            if self.sheet is not None:
+                text += f" + {len(self.mapping.item_headers(self.sheet.headers))} menu items"
+            else:
+                text += " + menu-item columns"
+        self.map_status.configure(text=text + ")")
 
     def _refresh_templates(self, select: str | None = None):
         names = T.ensure_default_template()
