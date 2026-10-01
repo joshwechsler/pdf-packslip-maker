@@ -1,0 +1,95 @@
+name: Build macOS app
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write  # only used to attach the zip to a GitHub Release on v* tags
+
+env:
+  PY_VERSION: "3.12.10"   # python.org universal2 installer (bundles a universal2 Tcl/Tk 8.6)
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install universal2 Python from python.org
+        run: |
+          curl -fsSLo python.pkg "https://www.python.org/ftp/python/${PY_VERSION}/python-${PY_VERSION}-macos11.pkg"
+          sudo installer -pkg python.pkg -target /
+          PY=/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12
+          "$PY" -c "import sys, platform, tkinter; print(sys.version, platform.machine(), 'Tk', tkinter.TkVersion)"
+          "$PY" -m venv venv
+          echo "$PWD/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Install build tools and universal2 dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install delocate pyinstaller==6.16.0
+          python packaging/install_universal2_deps.py requirements.txt
+          python -m pip install pytest pypdf
+
+      - name: Unit tests
+        run: python -m pytest -q
+
+      - name: Build .app
+        run: pyinstaller --noconfirm packaging/PackSlipMaker.spec
+
+      - name: Verify every binary is universal (Intel + Apple Silicon)
+        run: |
+          APP="dist/Pack Slip Maker.app"
+          echo "Main executable: $(lipo -archs "$APP/Contents/MacOS/Pack Slip Maker")"
+          bad=0
+          while IFS= read -r -d '' f; do
+            file -b "$f" | grep -q "Mach-O" || continue
+            case "$f" in */tkdnd/osx-*) continue ;; esac   # per-arch on purpose; picked at runtime
+            archs="$(lipo -archs "$f")"
+            if [[ "$archs" != *x86_64* || "$archs" != *arm64* ]]; then echo "THIN: $f ($archs)"; bad=1; fi
+          done < <(find "$APP" -type f -print0)
+          exit $bad
+
+      - name: Ad-hoc sign (required to launch on Apple Silicon)
+        run: |
+          codesign --force --deep --sign - "dist/Pack Slip Maker.app"
+          codesign --verify --deep --strict --verbose=2 "dist/Pack Slip Maker.app"
+
+      - name: Self-test (Apple Silicon)
+        run: '"dist/Pack Slip Maker.app/Contents/MacOS/Pack Slip Maker" --selftest'
+
+      - name: Self-test (Intel, via Rosetta)
+        run: |
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+            arch -x86_64 "dist/Pack Slip Maker.app/Contents/MacOS/Pack Slip Maker" --selftest
+          else
+            echo "::warning::Rosetta isn't installed on this runner; Intel slice not executed."
+          fi
+
+      - name: GUI smoke test
+        continue-on-error: true
+        run: '"dist/Pack Slip Maker.app/Contents/MacOS/Pack Slip Maker" --selftest-gui'
+
+      - name: Package zip (app + one-page instructions)
+        run: |
+          mkdir -p "release/Pack Slip Maker"
+          python tools/make_guide_pdf.py docs/OPERATOR_GUIDE.md "release/Pack Slip Maker/How to use Pack Slip Maker.pdf"
+          ditto "dist/Pack Slip Maker.app" "release/Pack Slip Maker/Pack Slip Maker.app"
+          cd release && ditto -c -k --sequesterRsrc --keepParent "Pack Slip Maker" ../Pack-Slip-Maker-mac.zip
+          ls -lh ../Pack-Slip-Maker-mac.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pack-Slip-Maker-mac
+          path: Pack-Slip-Maker-mac.zip
+          retention-days: 90
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Pack-Slip-Maker-mac.zip

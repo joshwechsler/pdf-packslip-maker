@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest
+pypdf
+pyinstaller==6.16.0
