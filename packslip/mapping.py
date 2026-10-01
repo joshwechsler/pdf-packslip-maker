@@ -26,8 +26,6 @@ DEFAULT_FIELDS = [
      "aliases": ["address", "delivery address", "shipping address", "ship to", "street"]},
     {"key": "order_date", "label": "Order Date", "sample": "Sep 8, 2026 7:29 PM",
      "aliases": ["order received", "order date", "ordered", "date ordered", "timestamp", "received", "date"]},
-    {"key": "delivery_date", "label": "Delivery Date", "sample": "Oct 2, 2026",
-     "aliases": ["delivery date", "ship date", "pickup date", "delivery day"]},
     {"key": "order_number", "label": "Order #", "sample": "1042",
      "aliases": ["order #", "order number", "order no", "order id", "invoice #", "invoice number"]},
     {"key": "notes", "label": "Delivery Instructions", "sample": "Leave at the side door.",
@@ -42,10 +40,14 @@ DEFAULT_FIELDS = [
      "aliases": ["qty", "quantity", "quantities"]},
 ]
 
-# Always available on layouts; calculated, never matched to a column.
+# Always available on layouts; never matched to a column.
+#   item_count    – sum of the customer's item quantities
+#   delivery_date – the date the Operator picks in the app before generating
 COMPUTED_FIELDS = [
     {"key": "item_count", "label": "Total Items", "sample": "6"},
+    {"key": "delivery_date", "label": "Delivery Date", "sample": "Thu, Oct 2, 2026"},
 ]
+COMPUTED_KEYS = {f["key"] for f in COMPUTED_FIELDS}
 
 ITEM_KEYS = {"items", "quantity"}
 NOT_USED = ""
@@ -206,7 +208,8 @@ class Mapping:
 
     @classmethod
     def from_json(cls, data: dict) -> "Mapping":
-        fields = data.get("fields") or [dict(f) for f in DEFAULT_FIELDS]
+        fields = [f for f in (data.get("fields") or [dict(f) for f in DEFAULT_FIELDS])
+                  if f.get("key") not in COMPUTED_KEYS]
         mode = data.get("items_mode") if data.get("items_mode") in ("columns", "single") else "single"
         return cls(fields=fields, columns=dict(data.get("columns") or {}), items_mode=mode,
                    items_after=data.get("items_after") or "", items_before=data.get("items_before") or "")

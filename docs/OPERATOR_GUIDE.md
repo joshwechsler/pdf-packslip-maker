@@ -12,10 +12,11 @@
 1. In Google Sheets, open the order sheet and choose **File → Download → Microsoft Excel (.xlsx)**. It lands in your **Downloads** folder.
 2. Open **Pack Slip Maker**.
 3. **Drag the downloaded file** onto the big box (or click **Browse…** and pick it).
-4. Click **Generate Pack Slips**.
-5. Click **Open PDF to Print**, then press **⌘P** to print. One page = one customer.
+4. Check the **Delivery date**. It remembers your usual delivery day, so normally it's already right. Use the dropdown or **Calendar…** to change it. This date prints on every slip.
+5. Click **Generate Pack Slips for (date)**.
+6. Click **Open PDF to Print**, then press **⌘P** to print. One page = one customer.
 
-The PDF is saved in the **same folder as your spreadsheet**, named **Pack Slips – (spreadsheet name) – (date).pdf**.
+The PDF is saved in the **same folder as your spreadsheet**, named **Pack Slips – (spreadsheet name) – delivery (date).pdf**.
 
 ## If something looks wrong
 

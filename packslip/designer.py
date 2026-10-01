@@ -33,7 +33,8 @@ PT_PER_IN = 72.0
 
 
 class Designer(tk.Toplevel):
-    def __init__(self, master, template_name: str, mapping: Mapping, sheet: Sheet | None, on_close=None):
+    def __init__(self, master, template_name: str, mapping: Mapping, sheet: Sheet | None, on_close=None,
+                 extra_values=None):
         super().__init__(master)
         self.title("Edit Layout")
         self.geometry("1180x820")
@@ -41,6 +42,7 @@ class Designer(tk.Toplevel):
         self.mapping = mapping
         self.sheet = sheet
         self.on_close = on_close
+        self.extra_values = extra_values  # callable -> dict, e.g. the chosen delivery date
         self.preview_index = 0
         self.selected: str | None = None
         self.dirty = False
@@ -162,8 +164,12 @@ class Designer(tk.Toplevel):
     def _values(self) -> dict:
         if self.sheet and self.sheet.rows:
             self.preview_index %= len(self.sheet.rows)
-            return self.mapping.values_for_row(self.sheet.rows[self.preview_index])
-        return self.mapping.sample_values()
+            vals = self.mapping.values_for_row(self.sheet.rows[self.preview_index])
+        else:
+            vals = self.mapping.sample_values()
+        if self.extra_values:
+            vals.update(self.extra_values())
+        return vals
 
     def _step_preview(self, d):
         if self.sheet and self.sheet.rows:

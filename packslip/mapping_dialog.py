@@ -13,7 +13,7 @@ from .ui_common import ScrollFrame, center_on
 NOT_USED_LABEL = "(not used)"
 START_LABEL = "(first column)"
 END_LABEL = "(last column)"
-BUILT_IN_KEYS = {"customer_name", "phone", "address", "order_date", "delivery_date", "order_number",
+BUILT_IN_KEYS = {"customer_name", "phone", "address", "order_date", "order_number",
                  "notes", "total", "paid", "items", "quantity"}
 
 

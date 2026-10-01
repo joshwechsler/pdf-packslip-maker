@@ -4,11 +4,10 @@ from packslip.mapping import Mapping, guess_columns, load_mapping, save_mapping
 
 def test_guess_columns_matches_common_headers():
     m = Mapping()
-    headers = ["Order No", "Client Name", "Ship Date", "Shipping Address", "Mobile", "Order Items",
+    headers = ["Order No", "Client Name", "Shipping Address", "Mobile", "Order Items",
                "QTY", "Special Instructions", "Unrelated"]
     cols = guess_columns(m.fields, headers)
-    assert cols == {"order_number": "Order No", "customer_name": "Client Name", "delivery_date": "Ship Date",
-                    "address": "Shipping Address", "phone": "Mobile", "items": "Order Items",
+    assert cols == {"order_number": "Order No", "customer_name": "Client Name", "address": "Shipping Address", "phone": "Mobile", "items": "Order Items",
                     "quantity": "QTY", "notes": "Special Instructions"}
 
 

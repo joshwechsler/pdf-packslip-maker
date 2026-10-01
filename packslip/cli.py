@@ -1,7 +1,7 @@
 """Command-line entry points (for the Owner/CI, not the Operator).
 
     "Pack Slip Maker" [file.xlsx]                 open the app (optionally with a file)
-    "Pack Slip Maker" --generate in.xlsx [--out out.pdf] [--template NAME]
+    "Pack Slip Maker" --generate in.xlsx [--delivery-date YYYY-MM-DD] [--out out.pdf] [--template NAME]
     "Pack Slip Maker" --selftest [--out out.pdf]  build a PDF from generated data; exit 0 if OK
     "Pack Slip Maker" --selftest-gui              open and close every window; exit 0 if OK
 """
@@ -82,10 +82,11 @@ def _selftest_gui() -> int:
     return 0
 
 
-def _generate(src: str, out: str | None, template_name: str | None) -> int:
+def _generate(src: str, out: str | None, template_name: str | None, delivery: str | None = None) -> int:
+    import datetime as dt
     from . import template as T
     from .mapping import Mapping, auto_map, load_mapping
-    from .pdfgen import GenerateError, default_output_path, generate_pdf
+    from .pdfgen import GenerateError, default_output_path, format_delivery_date, generate_pdf
     from .spreadsheet import SpreadsheetError, load
 
     try:
@@ -98,9 +99,11 @@ def _generate(src: str, out: str | None, template_name: str | None) -> int:
         m = auto_map(Mapping(), sheet.headers, sheet.rows)
     names = T.ensure_default_template()
     tpl = T.load_template(template_name or names[0]) or T.default_template()
-    out_path = Path(out) if out else default_output_path(sheet.path)
+    day = dt.date.fromisoformat(delivery) if delivery else None
+    extra = {"delivery_date": format_delivery_date(day)} if day else {}
+    out_path = Path(out) if out else default_output_path(sheet.path, day)
     try:
-        n = generate_pdf(out_path, tpl, m, sheet)
+        n = generate_pdf(out_path, tpl, m, sheet, extra=extra)
     except GenerateError as e:
         print(e, file=sys.stderr)
         return 3
@@ -117,6 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--generate", metavar="XLSX")
     p.add_argument("--out")
     p.add_argument("--template")
+    p.add_argument("--delivery-date", metavar="YYYY-MM-DD")
     p.add_argument("--selftest", action="store_true")
     p.add_argument("--selftest-gui", action="store_true")
     args = p.parse_args(argv)
@@ -126,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.selftest_gui:
         return _selftest_gui()
     if args.generate:
-        return _generate(args.generate, args.out, args.template)
+        return _generate(args.generate, args.out, args.template, args.delivery_date)
 
     from .app import run_gui
     run_gui(args.file)

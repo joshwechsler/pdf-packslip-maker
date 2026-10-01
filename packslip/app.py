@@ -15,7 +15,8 @@ from . import template as T
 from .designer import Designer
 from .mapping import Mapping, load_mapping, save_mapping
 from .mapping_dialog import MappingDialog
-from .pdfgen import GenerateError, check_ready, default_output_path, generate_pdf
+from .datepicker import DatePicker, default_delivery_date
+from .pdfgen import GenerateError, check_ready, default_output_path, format_delivery_date, generate_pdf
 from .spreadsheet import Sheet, SpreadsheetError, load as load_sheet
 from .ui_common import IS_MAC, center_on, open_path, reveal_path
 
@@ -119,8 +120,15 @@ class App:
         ttk.Button(row2, text="Remap Fields…", command=self.remap).pack(side="right")
 
         # Step 3 — generate
-        ttk.Label(outer, text="3.  Make the PDF", style="Step.TLabel").pack(anchor="w", pady=(18, 6))
+        ttk.Label(outer, text="3.  Pick the delivery date and make the PDF", style="Step.TLabel").pack(
+            anchor="w", pady=(18, 6))
+        date_row = ttk.Frame(outer)
+        date_row.pack(fill="x", pady=(0, 8))
+        ttk.Label(date_row, text="Delivery date:").pack(side="left")
         self.gen_btn = ttk.Button(outer, text="Generate Pack Slips", style="Big.TButton", command=self.generate)
+        self.date_picker = DatePicker(date_row, default_delivery_date(self.settings.get("delivery_weekday")),
+                                      command=self._delivery_chosen)
+        self.date_picker.pack(side="left", padx=6)
         self.gen_btn.pack(fill="x")
         self.progress = ttk.Progressbar(outer, mode="determinate")
         self.status = ttk.Label(outer, text="", style="Muted.TLabel")
@@ -241,6 +249,14 @@ class App:
         self.tpl_var.set(want if want in names else names[0])
         self._template_chosen()
 
+    def _delivery_chosen(self, d):
+        self.gen_btn.configure(text=f"Generate Pack Slips for {d:%a}, {d:%b} {d.day}")
+        self.settings["delivery_weekday"] = d.weekday()
+        storage.save_settings(self.settings)
+
+    def delivery_values(self) -> dict:
+        return {"delivery_date": format_delivery_date(self.date_picker.value)}
+
     def _template_chosen(self):
         self.settings["template"] = self.tpl_var.get()
         storage.save_settings(self.settings)
@@ -254,6 +270,7 @@ class App:
             return
         mapping = self.mapping or Mapping()
         self._designer = Designer(self.root, self.tpl_var.get(), mapping, self.sheet,
+                                  extra_values=self.delivery_values,
                                   on_close=lambda name: self._refresh_templates(name))
 
     def _refresh_generate_state(self):
@@ -262,12 +279,12 @@ class App:
 
     # ------------------------------------------------------------ generate
     def _output_path(self) -> Path:
-        out = default_output_path(self.sheet.path)
+        out = default_output_path(self.sheet.path, self.date_picker.value)
         if os.access(out.parent, os.W_OK):
             return out
         fallback = Path.home() / "Documents" / "Pack Slips"
         fallback.mkdir(parents=True, exist_ok=True)
-        return default_output_path(fallback / self.sheet.path.name)
+        return default_output_path(fallback / self.sheet.path.name, self.date_picker.value)
 
     def generate(self):
         if self.sheet is None:
@@ -307,7 +324,8 @@ class App:
                 self.root.update_idletasks()
 
         try:
-            pages = generate_pdf(out, tpl, self.mapping, self.sheet, progress=progress)
+            pages = generate_pdf(out, tpl, self.mapping, self.sheet, progress=progress,
+                                 extra=self.delivery_values())
         except GenerateError as e:
             messagebox.showerror("Couldn't make the PDF", str(e), parent=self.root)
             self.status.configure(text="")
@@ -316,7 +334,7 @@ class App:
             self.gen_btn.state(["!disabled"])
             self.progress.pack_forget()
             self.root.configure(cursor="")
-        self.status.configure(text=f"✓  Last run: {pages} pack slips saved to {out.name}", style="Ok.TLabel")
+        self.status.configure(text=f"✓  Last run: {pages} pack slip{'s' if pages != 1 else ''} saved to {out.name}", style="Ok.TLabel")
         self._show_success(out, pages)
 
     def _show_success(self, out: Path, pages: int):
@@ -330,8 +348,8 @@ class App:
                   foreground="#1E7B34").pack(anchor="w")
         ttk.Label(f, text=f"{pages} page{'s' if pages != 1 else ''} — one per customer.").pack(anchor="w", pady=(6, 10))
         ttk.Label(f, text="Saved as:", style="Muted.TLabel").pack(anchor="w")
-        path_var = tk.StringVar(value=str(out))
-        entry = ttk.Entry(f, textvariable=path_var, width=60, state="readonly")
+        win.path_var = tk.StringVar(master=win, value=str(out))  # keep a reference or Tk shows it blank
+        entry = ttk.Entry(f, textvariable=win.path_var, width=60, state="readonly")
         entry.pack(fill="x", pady=(2, 16))
         btns = ttk.Frame(f)
         btns.pack(fill="x")
@@ -373,7 +391,7 @@ def run_gui(initial_file: str | None = None) -> None:
     root, dnd = make_root()
     app = App(root, dnd)
     root.update_idletasks()
-    w, h = 640, 600
+    w, h = 640, 660
     x = max((root.winfo_screenwidth() - w) // 2, 0)
     y = max((root.winfo_screenheight() - h) // 3, 0)
     root.geometry(f"{w}x{h}+{x}+{y}")

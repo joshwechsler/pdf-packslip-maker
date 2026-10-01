@@ -43,7 +43,7 @@ Everything stays on the Operator's Mac (NFR-7):
 ```
 
 PDFs are saved next to the spreadsheet as
-`Pack Slips - <spreadsheet name> - <YYYY-MM-DD>.pdf`. Existing files are never
+`Pack Slips - <spreadsheet name> - delivery <YYYY-MM-DD>.pdf`. Existing files are never
 overwritten. If that folder is read-only, PDFs go to `~/Documents/Pack Slips`.
 
 ## Developing
@@ -102,6 +102,9 @@ menu item** with the quantity in the cell, then a `TOTALS` row:
   the quantity and the dish name, and `{Total Items}` gives the sum of quantities.
 - Rows whose cell reads `TOTAL`, `TOTALS`, `Grand Total` or `Subtotal` are skipped.
 - 10-digit phone numbers print as `(203) 555-0147`.
+- **Delivery date** isn't in the sheet. The Operator picks it in the app (dropdown of the next 4
+  weeks plus a calendar, defaulting to the next occurrence of the last-used weekday). It prints as
+  `{Delivery Date}` / the "Delivery Date" field, and in the PDF filename.
 - Sheets with all items in one column are still supported ("All items are listed in one column").
 
 `sample/sample_orders.xlsx` is fake data in this exact shape.

@@ -150,10 +150,16 @@ def check_ready(template: Template, mapping: Mapping, sheet: Sheet) -> None:
         )
 
 
-def default_output_path(sheet_path: Path, when: dt.date | None = None) -> Path:
-    when = when or dt.date.today()
+def format_delivery_date(d: dt.date) -> str:
+    return f"{d:%a}, {d:%b} {d.day}, {d.year}"
+
+
+def default_output_path(sheet_path: Path, delivery: dt.date | None = None) -> Path:
     folder = sheet_path.parent
-    stem = f"Pack Slips - {sheet_path.stem} - {when:%Y-%m-%d}"
+    if delivery:
+        stem = f"Pack Slips - {sheet_path.stem} - delivery {delivery:%Y-%m-%d}"
+    else:
+        stem = f"Pack Slips - {sheet_path.stem} - {dt.date.today():%Y-%m-%d}"
     out = folder / f"{stem}.pdf"
     n = 2
     while out.exists():
@@ -163,7 +169,8 @@ def default_output_path(sheet_path: Path, when: dt.date | None = None) -> Path:
 
 
 def generate_pdf(out_path: str | Path, template: Template, mapping: Mapping, sheet: Sheet,
-                 progress: Callable[[int, int], None] | None = None) -> int:
+                 progress: Callable[[int, int], None] | None = None, extra: dict | None = None) -> int:
+    """`extra` values (e.g. the chosen delivery date) are added to every page."""
     check_ready(template, mapping, sheet)
     out_path = Path(out_path)
     w, h = template.page_size
@@ -175,7 +182,9 @@ def generate_pdf(out_path: str | Path, template: Template, mapping: Mapping, she
         c.setCreator(APP_NAME)
         total = len(sheet.rows)
         for i, row in enumerate(sheet.rows, 1):
-            draw_page(c, template, mapping.values_for_row(row), mapping, images)
+            values = mapping.values_for_row(row)
+            values.update(extra or {})
+            draw_page(c, template, values, mapping, images)
             c.showPage()
             if progress:
                 progress(i, total)
