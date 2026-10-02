@@ -85,7 +85,7 @@ def _selftest_gui() -> int:
 def _generate(src: str, out: str | None, template_name: str | None, delivery: str | None = None) -> int:
     import datetime as dt
     from . import template as T
-    from .mapping import Mapping, auto_map, load_mapping
+    from .mapping import Mapping, auto_map, load_mapping, migrate_legacy_mapping
     from .pdfgen import GenerateError, default_output_path, format_delivery_date, generate_pdf
     from .spreadsheet import SpreadsheetError, load
 
@@ -94,11 +94,12 @@ def _generate(src: str, out: str | None, template_name: str | None, delivery: st
     except SpreadsheetError as e:
         print(e, file=sys.stderr)
         return 2
-    m = load_mapping()
+    names = T.ensure_default_template()
+    migrate_legacy_mapping(names)
+    tpl = T.load_template(template_name or names[0]) or T.default_template()
+    m = load_mapping(tpl.name)
     if m is None or m.is_empty():
         m = auto_map(Mapping(), sheet.headers, sheet.rows)
-    names = T.ensure_default_template()
-    tpl = T.load_template(template_name or names[0]) or T.default_template()
     day = dt.date.fromisoformat(delivery) if delivery else None
     extra = {"delivery_date": format_delivery_date(day)} if day else {}
     out_path = Path(out) if out else default_output_path(sheet.path, day)

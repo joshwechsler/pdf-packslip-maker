@@ -35,7 +35,7 @@ Everything stays on the Operator's Mac (NFR-7):
 
 ```
 ~/Library/Application Support/Packs Be Slippin'/
-    mapping.json        column matches (FR-3)
+    mappings/*.json     column matches, one file per layout (FR-3)
     templates/*.json    layouts (FR-5)
     assets/             copied logo files
     settings.json       last folder / selected layout
@@ -87,6 +87,18 @@ Apple Silicon drag-and-drop libraries are bundled.
   once. The Operator guide covers both paths.
 - **Fonts:** the built-in PDF fonts are Helvetica, Times, and Courier, so the app needs
   no font files. Characters outside Western European (such as emoji or CJK) print as `?`.
+
+## Several businesses
+
+Column matches are stored **per layout** (`mappings/<layout>.json`), so each business gets a
+layout with its own columns, logo, brand colors and remembered delivery weekday.
+
+- On loading a spreadsheet, the app keeps the selected layout if its matches fit. Otherwise it
+  switches to the layout that fits best (`Mapping.fit_score`).
+- If nothing fits, it asks: "different business → new layout" or "headings changed → re-match".
+- In Edit Layout, **Duplicate** copies a layout *with* its matches (a variation for the same
+  business). **New** starts with no matches and no logo (a different business).
+- The old app-wide `mapping.json` is copied to every existing layout on first launch.
 
 ## Real spreadsheet format
 

@@ -5,9 +5,9 @@ read-only once installed (and may be run from a randomized, read-only path by
 Gatekeeper), so files live in the standard per-user folder instead:
 
     ~/Library/Application Support/Packs Be Slippin'/
-        mapping.json
         settings.json
-        templates/<name>.json
+        templates/<layout>.json   one per layout (one per business, or print style)
+        mappings/<layout>.json    column matches, kept separately for each layout
         assets/<logo files>
 
 Set PACKSLIP_DATA_DIR to override (used by tests).
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -42,6 +43,10 @@ def data_dir() -> Path:
         base = Path.home() / ".packslip-maker"
     base.mkdir(parents=True, exist_ok=True)
     return base
+
+
+def safe_filename(name: str) -> str:
+    return re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", name).strip(" .") or "Untitled"
 
 
 def templates_dir() -> Path:

@@ -222,12 +222,8 @@ def default_template(name: str = "Standard") -> Template:
 
 # -- persistence -------------------------------------------------------------
 
-def _safe_filename(name: str) -> str:
-    return re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", name).strip(" .") or "Untitled"
-
-
 def template_path(name: str) -> Path:
-    return storage.templates_dir() / f"{_safe_filename(name)}.json"
+    return storage.templates_dir() / f"{storage.safe_filename(name)}.json"
 
 
 def list_templates() -> list[str]:

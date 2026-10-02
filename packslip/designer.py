@@ -20,7 +20,7 @@ from PIL import Image, ImageTk
 from . import storage
 from . import template as T
 from .layout import ascent, fit_text, inner_box, items_primitives
-from .mapping import ITEMS_KEY, Mapping
+from .mapping import ITEMS_KEY, Mapping, copy_mapping, delete_mapping, load_mapping, rename_mapping
 from .pdfgen import render_preview_pdf
 from .spreadsheet import Sheet
 from .ui_common import ColorSwatch, ask_name, open_path
@@ -753,6 +753,8 @@ class Designer(tk.Toplevel):
 
     def _load(self, tpl: T.Template):
         self.tpl = tpl
+        self.mapping = load_mapping(tpl.name) or Mapping()  # each layout has its own column matches
+        self._rebuild_field_menu()
         self.selected = None
         self.dirty = False
         self.title("Edit Layout")
@@ -780,16 +782,16 @@ class Designer(tk.Toplevel):
     def _new_template(self):
         if not self._confirm_discard():
             return
-        name = ask_name(self, "New Layout", "Name for the new layout:")
+        name = ask_name(self, "New Layout",
+                        "A new layout starts fresh, with its own spreadsheet columns and logo\n"
+                        "(use it for a different business). To make a variation of this one,\n"
+                        "use Duplicate instead.\n\nName for the new layout:")
         if not name or not self._unique_name_ok(name):
             return
         tpl = T.default_template(name)
-        tpl.brand = dict(self.tpl.brand)
-        for el in tpl.elements:  # carry over the current logo so it isn't lost
+        for el in tpl.elements:
             if el["type"] == "logo":
-                logos = [e for e in self.tpl.elements if e["type"] == "logo" and e.get("image")]
-                if logos:
-                    el["image"] = logos[0]["image"]
+                el["image"] = ""
         T.save_template(tpl)
         self._load(tpl)
 
@@ -799,6 +801,7 @@ class Designer(tk.Toplevel):
             return
         tpl = self.tpl.copy(name)
         T.save_template(tpl)
+        copy_mapping(self.tpl.name, name)
         self.dirty = False
         self._load(tpl)
 
@@ -810,7 +813,11 @@ class Designer(tk.Toplevel):
         self.tpl.name = name
         T.save_template(self.tpl)
         T.delete_template(old)
+        rename_mapping(old, name)
         settings = storage.load_settings()
+        by_layout = settings.get("delivery_weekday_by_layout", {})
+        if old in by_layout:
+            by_layout[name] = by_layout.pop(old)
         if settings.get("template") == old:
             settings["template"] = name
             storage.save_settings(settings)
@@ -827,6 +834,7 @@ class Designer(tk.Toplevel):
                                    parent=self):
             return
         T.delete_template(self.tpl.name)
+        delete_mapping(self.tpl.name)
         remaining = T.list_templates() or T.ensure_default_template()
         self.dirty = False
         self._load(T.load_template(remaining[0]) or T.default_template())
@@ -839,7 +847,7 @@ class Designer(tk.Toplevel):
         self._refresh_template_list()
 
     def _preview_pdf(self):
-        out = Path(tempfile.gettempdir()) / f"Pack Slip Preview - {T._safe_filename(self.tpl.name)}.pdf"
+        out = Path(tempfile.gettempdir()) / f"Pack Slip Preview - {storage.safe_filename(self.tpl.name)}.pdf"
         try:
             render_preview_pdf(out, self.tpl, self.mapping, self._values())
         except OSError as e:

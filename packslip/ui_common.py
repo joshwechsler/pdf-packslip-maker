@@ -151,3 +151,24 @@ class ScrollFrame(tk.Frame):
         else:
             delta = -1 if event.delta > 0 else 1
         self.canvas.yview_scroll(delta, "units")
+
+
+def ask_choice(parent, title: str, message: str, choices: list[str]) -> int | None:
+    """Modal question with one button per choice. Returns the chosen index, or None if closed."""
+    from tkinter import ttk
+    win = tk.Toplevel(parent)
+    win.title(title)
+    win.transient(parent)
+    win.resizable(False, False)
+    result: list[int | None] = [None]
+    f = ttk.Frame(win, padding=20)
+    f.pack(fill="both", expand=True)
+    ttk.Label(f, text=message, wraplength=440, justify="left").pack(anchor="w", pady=(0, 16))
+    for i, text in enumerate(choices):
+        ttk.Button(f, text=text, command=lambda i=i: (result.__setitem__(0, i), win.destroy())).pack(
+            fill="x", pady=3)
+    win.bind("<Escape>", lambda e: win.destroy())
+    center_on(win, parent)
+    win.grab_set()
+    parent.wait_window(win)
+    return result[0]

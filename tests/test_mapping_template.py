@@ -15,8 +15,8 @@ def test_mapping_roundtrip_and_custom_field():
     m = Mapping()
     key = m.add_field("Route")
     m.columns = {"customer_name": "Customer", key: "Route #"}
-    save_mapping(m)
-    loaded = load_mapping()
+    save_mapping(m, "Standard")
+    loaded = load_mapping("Standard")
     assert loaded.columns == m.columns
     assert loaded.field_label(key) == "Route"
     assert loaded.missing_columns(["Customer"]) == [("Route", "Route #")]
@@ -103,8 +103,8 @@ def test_missing_anchor_column_is_reported():
 def test_mapping_v2_roundtrip():
     from packslip.mapping import auto_map
     m = auto_map(Mapping(), REAL_HEADERS, _real_rows())
-    save_mapping(m)
-    m2 = load_mapping()
+    save_mapping(m, "Standard")
+    m2 = load_mapping("Standard")
     assert (m2.items_mode, m2.items_after, m2.items_before) == ("columns", "Address", "Delivery Fee")
 
 
@@ -134,3 +134,41 @@ def test_old_navy_gold_layouts_switch_to_black_and_white():
     assert t.brand == T.DEFAULT_BRAND == {"primary": "#000000", "accent": "#555555"}
     custom = T.Template.from_json({"name": "y", "brand": {"primary": "#FF0000", "accent": "#C8A24A"}})
     assert custom.brand["primary"] == "#FF0000"  # colours someone chose are kept
+
+
+def test_each_layout_has_its_own_column_matches():
+    from packslip import mapping as M
+    a, b = Mapping(), Mapping()
+    a.columns = {"customer_name": "Customer Name"}
+    b.columns = {"customer_name": "Client", "address": "Ship To"}
+    M.save_mapping(a, "Meal Prep")
+    M.save_mapping(b, "Other Biz")
+    assert M.load_mapping("Meal Prep").columns == a.columns
+    assert M.load_mapping("Other Biz").columns == b.columns
+    M.copy_mapping("Other Biz", "Other Biz copy")
+    M.rename_mapping("Other Biz copy", "Renamed")
+    assert M.load_mapping("Renamed").columns == b.columns and M.load_mapping("Other Biz copy") is None
+    M.delete_mapping("Renamed")
+    assert M.load_mapping("Renamed") is None
+
+
+def test_legacy_app_wide_mapping_migrates_to_every_layout():
+    from packslip import mapping as M, storage
+    old = Mapping()
+    old.columns = {"customer_name": "Customer Name"}
+    storage.write_json(storage.data_dir() / "mapping.json", old.to_json())
+    M.migrate_legacy_mapping(["Standard", "Driver copy"])
+    assert M.load_mapping("Standard").columns == old.columns
+    assert M.load_mapping("Driver copy").columns == old.columns
+    assert not (storage.data_dir() / "mapping.json").exists()
+
+
+def test_fit_score_picks_the_right_business():
+    from packslip.mapping import auto_map
+    meal = auto_map(Mapping(), REAL_HEADERS, _real_rows())
+    other_headers = ["Client", "Ship To", "SKU", "Qty Ordered"]
+    other = Mapping()
+    other.columns = {"customer_name": "Client", "address": "Ship To", "items": "SKU", "quantity": "Qty Ordered"}
+    assert meal.fit_score(REAL_HEADERS) > 0 and other.fit_score(REAL_HEADERS) == -1
+    assert other.fit_score(other_headers) > 0 and meal.fit_score(other_headers) == -1
+    assert Mapping().fit_score(REAL_HEADERS) == -1  # never matched

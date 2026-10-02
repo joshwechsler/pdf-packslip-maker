@@ -43,6 +43,6 @@ def test_old_saved_mapping_with_delivery_column_field_is_cleaned():
     m = Mapping()
     data = m.to_json()
     data["fields"] = data["fields"] + [{"key": "delivery_date", "label": "Delivery Date"}]
-    save_mapping(Mapping.from_json(data))
-    keys = [f["key"] for f in load_mapping().all_fields()]
+    save_mapping(Mapping.from_json(data), "Standard")
+    keys = [f["key"] for f in load_mapping("Standard").all_fields()]
     assert keys.count("delivery_date") == 1

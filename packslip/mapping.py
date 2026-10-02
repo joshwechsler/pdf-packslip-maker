@@ -21,11 +21,12 @@ DEFAULT_FIELDS = [
     {"key": "customer_name", "label": "Customer Name", "sample": "Jane Smith",
      "aliases": ["customer name", "customer", "name", "client", "full name", "client name"]},
     {"key": "phone", "label": "Phone", "sample": "(555) 123-4567",
-     "aliases": ["phone number", "phone", "mobile", "cell", "tel", "telephone"]},
+     "aliases": ["phone number", "phone", "mobile", "cell", "tel", "telephone", "contact #", "contact number",
+                 "contact"]},
     {"key": "address", "label": "Address", "sample": "123 Main St, Unit 4, Springfield, CT 06401",
      "aliases": ["address", "delivery address", "shipping address", "ship to", "street"]},
     {"key": "order_date", "label": "Order Date", "sample": "Sep 8, 2026 7:29 PM",
-     "aliases": ["order received", "order date", "ordered", "date ordered", "timestamp", "received", "date"]},
+     "aliases": ["order received", "order date", "date ordered", "timestamp", "received", "date"]},
     {"key": "order_number", "label": "Order #", "sample": "1042",
      "aliases": ["order #", "order number", "order no", "order id", "invoice #", "invoice number"]},
     {"key": "notes", "label": "Delivery Instructions", "sample": "Leave at the side door.",
@@ -35,9 +36,10 @@ DEFAULT_FIELDS = [
      "aliases": ["total cost", "order total", "total", "amount", "grand total"]},
     {"key": "paid", "label": "Paid", "sample": "No", "aliases": ["paid", "payment status", "payment"]},
     {"key": "items", "label": "Items", "sample": "Orange Chicken\nTexas Turkey Chili\nProtein Overnight Oats",
-     "aliases": ["items", "item", "products", "order items", "meals", "description"]},
+     "aliases": ["items", "item", "products", "product", "order items", "item name", "product name", "sku",
+                 "meals", "description"]},
     {"key": "quantity", "label": "Quantity", "sample": "2\n1\n3",
-     "aliases": ["qty", "quantity", "quantities"]},
+     "aliases": ["qty", "quantity", "quantities", "qty ordered", "quantity ordered", "count"]},
 ]
 
 # Always available on layouts; never matched to a column.
@@ -198,6 +200,19 @@ class Mapping:
                     out.append((label, col))
         return out
 
+    def fit_score(self, headers: list[str], used_keys: set[str] | None = None) -> int:
+        """How well this mapping fits a spreadsheet: -1 if columns it needs are missing,
+        else the number of its columns found (0 = nothing matched)."""
+        if self.is_empty() or self.missing_columns(headers, used_keys):
+            return -1
+        present = set(headers)
+        score = sum(1 for k, v in self.columns.items() if v and v in present and k not in ITEM_KEYS)
+        if self.items_mode == "columns":
+            score += 1 if self.item_headers(headers) else 0
+        else:
+            score += sum(1 for k in ITEM_KEYS if self.columns.get(k) in present)
+        return score
+
     def is_empty(self) -> bool:
         return self.items_mode != "columns" and not any(self.columns.values())
 
@@ -235,7 +250,7 @@ def guess_columns(fields: list[dict], headers: list[str]) -> dict[str, str]:
                 for h, nh in normed.items():
                     if h in taken:
                         continue
-                    hit = nh == cand if exact else (len(cand) > 3 and re.search(rf"\b{re.escape(cand)}\b", nh))
+                    hit = nh == cand if exact else (len(cand) >= 3 and re.search(rf"\b{re.escape(cand)}\b", nh))
                     if hit:
                         result[f["key"]] = h
                         taken.add(h)
@@ -283,14 +298,53 @@ def auto_map(mapping: Mapping, headers: list[str], rows: list[dict[str, str]]) -
     return mapping
 
 
-def mapping_path():
-    return storage.data_dir() / "mapping.json"
+# -- persistence: one set of column matches per layout ---------------------------
+#
+# Each layout (template) has its own matches, so two businesses with different
+# spreadsheets can each have a layout that reads their own columns.
+
+def _legacy_path():
+    return storage.data_dir() / "mapping.json"  # before matches were per layout
 
 
-def load_mapping() -> Mapping | None:
-    data = storage.read_json(mapping_path())
+def mapping_path(layout: str):
+    d = storage.data_dir() / "mappings"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{storage.safe_filename(layout)}.json"
+
+
+def load_mapping(layout: str) -> Mapping | None:
+    data = storage.read_json(mapping_path(layout))
     return Mapping.from_json(data) if data else None
 
 
-def save_mapping(m: Mapping) -> None:
-    storage.write_json(mapping_path(), m.to_json())
+def save_mapping(m: Mapping, layout: str) -> None:
+    storage.write_json(mapping_path(layout), m.to_json())
+
+
+def delete_mapping(layout: str) -> None:
+    mapping_path(layout).unlink(missing_ok=True)
+
+
+def rename_mapping(old: str, new: str) -> None:
+    src = mapping_path(old)
+    if src.exists():
+        src.replace(mapping_path(new))
+
+
+def copy_mapping(src: str, dst: str) -> None:
+    m = load_mapping(src)
+    if m is not None:
+        save_mapping(m, dst)
+
+
+def migrate_legacy_mapping(layouts: list[str]) -> None:
+    """Give every existing layout a copy of the old app-wide matches (one time)."""
+    legacy = _legacy_path()
+    data = storage.read_json(legacy)
+    if not data:
+        return
+    for name in layouts:
+        if not mapping_path(name).exists():
+            storage.write_json(mapping_path(name), data)
+    legacy.replace(legacy.with_name("mapping.json.migrated"))

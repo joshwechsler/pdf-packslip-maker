@@ -13,12 +13,12 @@ from tkinter import filedialog, messagebox, ttk
 from . import APP_NAME, __version__, storage
 from . import template as T
 from .designer import Designer
-from .mapping import Mapping, load_mapping, save_mapping
+from .mapping import Mapping, load_mapping, migrate_legacy_mapping, save_mapping
 from .mapping_dialog import MappingDialog
 from .datepicker import DatePicker, default_delivery_date
 from .pdfgen import GenerateError, check_ready, default_output_path, format_delivery_date, generate_pdf
 from .spreadsheet import Sheet, SpreadsheetError, load as load_sheet
-from .ui_common import IS_MAC, center_on, open_path, reveal_path
+from .ui_common import IS_MAC, ask_choice, ask_name, center_on, open_path, reveal_path
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -45,9 +45,9 @@ class App:
         self.root = root
         self.dnd = dnd
         self.sheet: Sheet | None = None
-        self.mapping: Mapping | None = load_mapping()
+        self.mapping: Mapping | None = None  # column matches for the selected layout
         self.settings = storage.load_settings()
-        T.ensure_default_template()
+        migrate_legacy_mapping(T.ensure_default_template())
         T.install_default_logo()  # refresh the built-in logo after an app update
 
         root.title(APP_NAME)
@@ -126,7 +126,7 @@ class App:
         date_row.pack(fill="x", pady=(0, 8))
         ttk.Label(date_row, text="Delivery date:").pack(side="left")
         self.gen_btn = ttk.Button(outer, text="Generate Pack Slips", style="Big.TButton", command=self.generate)
-        self.date_picker = DatePicker(date_row, default_delivery_date(self.settings.get("delivery_weekday")),
+        self.date_picker = DatePicker(date_row, default_delivery_date(self._usual_weekday(self.settings.get("template", ""))),
                                       command=self._delivery_chosen)
         self.date_picker.pack(side="left", padx=6)
         self.gen_btn.pack(fill="x")
@@ -192,20 +192,66 @@ class App:
         else:
             self.sheet_combo.pack_forget()
         self.status.configure(text="")
-
-        if self.mapping is None or self.mapping.is_empty():
-            self.remap(first_time=True)
-        else:
-            missing = self.mapping.missing_columns(sheet.headers, self._current_template().used_field_keys(self.mapping))
-            if missing:
-                cols = "\n".join(f"  • {label}  (expected “{col}”)" for label, col in missing)
-                if messagebox.askyesno(
-                        "Some columns have changed",
-                        "This spreadsheet doesn't have some of the columns the pack slip uses:\n\n"
-                        f"{cols}\n\nWould you like to match the fields up again now?", parent=self.root):
-                    self.remap()
+        self._choose_layout_for(sheet)
         self._refresh_mapping_status()
         self._refresh_generate_state()
+
+    def _fit(self, name: str, sheet: Sheet) -> int:
+        m = load_mapping(name)
+        tpl = T.load_template(name)
+        if m is None or tpl is None:
+            return -1
+        return m.fit_score(sheet.headers, tpl.used_field_keys(m))
+
+    def _choose_layout_for(self, sheet: Sheet):
+        """Use the layout whose column matches fit this spreadsheet (one layout per business)."""
+        current = self.tpl_var.get()
+        if self._fit(current, sheet) > 0:
+            return
+        scores = {n: self._fit(n, sheet) for n in T.list_templates() if n != current}
+        best = max(scores, key=scores.get, default=None)
+        if best is not None and scores[best] > 0:
+            self._refresh_templates(best)
+            self.status.configure(text=f"Switched to the “{best}” layout, which matches this spreadsheet.",
+                                  style="Ok.TLabel")
+            return
+        if self.mapping is None or self.mapping.is_empty():
+            # The selected layout has never been matched: set it up for this spreadsheet.
+            self.remap(first_time=True)
+            return
+        missing = self.mapping.missing_columns(sheet.headers, self._current_template().used_field_keys(self.mapping))
+        cols = "\n".join(f"  • {label}  (expected “{col}”)" for label, col in missing[:6])
+        choice = ask_choice(
+            self.root, "This spreadsheet doesn't match",
+            f"This spreadsheet doesn't have the columns the “{current}” layout uses:\n\n{cols}\n\n"
+            "Is it for a different business, or did the column headings change?",
+            ["It's a different business: make a new layout for it",
+             f"Headings changed: re-match the “{current}” layout",
+             "Cancel"])
+        if choice == 0:
+            self.new_business_layout()
+        elif choice == 1:
+            self.remap()
+
+    def new_business_layout(self):
+        name = ask_name(self.root, "New layout", "Name for this business's layout (e.g. the business name):")
+        if not name:
+            return
+        if name.lower() in {n.lower() for n in T.list_templates()}:
+            messagebox.showwarning("Name taken", f"There's already a layout called “{name}”.", parent=self.root)
+            return
+        tpl = T.default_template(name)
+        for el in tpl.elements:  # a different business needs its own logo
+            if el["type"] == "logo":
+                el["image"] = ""
+        T.save_template(tpl)
+        self._refresh_templates(name)
+        self.remap(first_time=True)
+        if self.mapping is not None and not self.mapping.is_empty():
+            messagebox.showinfo("Layout created",
+                                f"The “{name}” layout is ready and remembers this spreadsheet's columns.\n\n"
+                                "Click “Edit Layout…” to add this business's logo and adjust the slip.",
+                                parent=self.root)
 
     def _change_sheet(self):
         if self.sheet and self.sheet_var.get() != self.sheet.sheet_name:
@@ -223,7 +269,7 @@ class App:
             self.root.wait_window(dlg)
         if dlg.result is not None:
             self.mapping = dlg.result
-            save_mapping(self.mapping)
+            save_mapping(self.mapping, self.tpl_var.get())
         elif first_time and (self.mapping is None or self.mapping.is_empty()):
             self.status.configure(text="Fields aren't matched yet — click “Remap Fields…” when you're ready.")
         self._refresh_mapping_status()
@@ -231,10 +277,10 @@ class App:
 
     def _refresh_mapping_status(self):
         if self.mapping is None or self.mapping.is_empty():
-            self.map_status.configure(text="Fields: not matched to spreadsheet columns yet")
+            self.map_status.configure(text="Columns: not matched for this layout yet")
             return
         n = sum(1 for v in self.mapping.columns.values() if v)
-        text = f"Fields: using your saved matches ({n} columns"
+        text = f"Columns: using this layout's saved matches ({n} columns"
         if self.mapping.items_mode == "columns":
             if self.sheet is not None:
                 text += f" + {len(self.mapping.item_headers(self.sheet.headers))} menu items"
@@ -251,15 +297,27 @@ class App:
 
     def _delivery_chosen(self, d):
         self.gen_btn.configure(text=f"Generate Pack Slips for {d:%a}, {d:%b} {d.day}")
-        self.settings["delivery_weekday"] = d.weekday()
-        storage.save_settings(self.settings)
+        layout = self.tpl_var.get()
+        if layout:  # each layout (business) remembers its own delivery day
+            self.settings.setdefault("delivery_weekday_by_layout", {})[layout] = d.weekday()
+            storage.save_settings(self.settings)
+
+    def _usual_weekday(self, layout: str):
+        return self.settings.get("delivery_weekday_by_layout", {}).get(layout, self.settings.get("delivery_weekday"))
 
     def delivery_values(self) -> dict:
         return {"delivery_date": format_delivery_date(self.date_picker.value)}
 
     def _template_chosen(self):
-        self.settings["template"] = self.tpl_var.get()
+        name = self.tpl_var.get()
+        changed = name != getattr(self, "_shown_layout", None)
+        self._shown_layout = name
+        self.settings["template"] = name
         storage.save_settings(self.settings)
+        self.mapping = load_mapping(name)
+        self._refresh_mapping_status()
+        if changed:
+            self.date_picker.set(default_delivery_date(self._usual_weekday(name)))
 
     def _current_template(self) -> T.Template:
         return T.load_template(self.tpl_var.get()) or T.default_template(self.tpl_var.get() or "Standard")
@@ -268,7 +326,7 @@ class App:
         if getattr(self, "_designer", None) is not None and self._designer.winfo_exists():
             self._designer.lift()
             return
-        mapping = self.mapping or Mapping()
+        mapping = load_mapping(self.tpl_var.get()) or Mapping()
         self._designer = Designer(self.root, self.tpl_var.get(), mapping, self.sheet,
                                   extra_values=self.delivery_values,
                                   on_close=lambda name: self._refresh_templates(name))
