@@ -100,6 +100,23 @@ layout with its own columns, logo, brand colors and remembered delivery weekday.
   business). **New** starts with no matches and no logo (a different business).
 - The old app-wide `mapping.json` is copied to every existing layout on first launch.
 
+## One row per item (store exports)
+
+Fulfillment exports list **one row per item**, with the customer details repeated on each row
+(e.g. `Order, Customer, …, Product, Variant, Quantity, Modifiers, …, Full Address, Customer Phone,
+Driver Instructions, Delivery Zone, Delivery Window`). In this "rows" mode:
+
+- Rows with the same **Order** value become one pack slip. Customer details come from the
+  order's first row. The mode is detected automatically when a column repeats on neighbouring rows.
+- Each item shows its quantity and name, plus its **Variant** unless it's Default/Regular/Standard
+  (so "Small" stands out). **Modifiers** print smaller underneath (custom-meal components;
+  "(1x)" is dropped).
+- **Delivery / Pickup**, **Pickup Location** (blanked on delivery orders, where it's the
+  kitchen), **Delivery Window** and **Route / Zone** are available, and the default layout
+  shows them top-right.
+- `.csv` files are read directly (UTF-8 or Windows encoding; leading zeros in ZIP codes kept).
+- If the file has a single **Fulfillment/Delivery Date**, the date picker pre-selects it.
+
 ## Real spreadsheet format
 
 The weekly Google Sheet (downloaded as .xlsx) has **one row per customer** and **one column per

@@ -34,7 +34,7 @@ def test_value_formatting():
 
 
 @pytest.mark.parametrize("name,needle", [
-    ("old.xls", ".xls"), ("data.csv", ".csv"), ("notes.txt", "isn't an Excel"), ("~$lock.xlsx", "temporary"),
+    ("old.xls", ".xls"), ("sheet.numbers", ".numbers"), ("notes.txt", "can read"), ("~$lock.xlsx", "temporary"),
 ])
 def test_friendly_errors_for_wrong_files(tmp_path, name, needle):
     p = tmp_path / name
@@ -71,3 +71,16 @@ def test_totals_row_is_skipped(make_xlsx):
 def test_bool_and_big_number_cells(make_xlsx):
     s = load(make_xlsx([["Phone", "Paid"], [2035550147.0, False]]))
     assert s.rows[0] == {"Phone": "2035550147", "Paid": "No"}
+
+
+def test_csv_with_quotes_newlines_and_leading_zeros(tmp_path):
+    p = tmp_path / "orders.csv"
+    p.write_text('Order,Customer,Zip Code,Notes\n1,"Smith, Jo",06450,"line one\nline two"\n', encoding="utf-8-sig")
+    s = load(p)
+    assert s.rows == [{"Order": "1", "Customer": "Smith, Jo", "Zip Code": "06450", "Notes": "line one\nline two"}]
+
+
+def test_csv_in_windows_encoding(tmp_path):
+    p = tmp_path / "w.csv"
+    p.write_bytes("Customer,Item\nJos\xe9,Cr\xe8me\n".encode("cp1252"))
+    assert load(p).rows[0] == {"Customer": "José", "Item": "Crème"}

@@ -15,7 +15,7 @@ from . import template as T
 from .designer import Designer
 from .mapping import Mapping, load_mapping, migrate_legacy_mapping, save_mapping
 from .mapping_dialog import MappingDialog
-from .datepicker import DatePicker, default_delivery_date
+from .datepicker import DatePicker, default_delivery_date, sheet_delivery_date
 from .pdfgen import GenerateError, check_ready, default_output_path, format_delivery_date, generate_pdf
 from .spreadsheet import Sheet, SpreadsheetError, load as load_sheet
 from .ui_common import IS_MAC, ask_choice, ask_name, center_on, open_path, reveal_path
@@ -86,7 +86,8 @@ class App:
         self.drop.pack_propagate(False)
         inner = tk.Frame(self.drop, background=DROP_BG)
         inner.place(relx=0.5, rely=0.5, anchor="center")
-        drop_text = "Drag your spreadsheet (.xlsx) here" if self.dnd else "Choose your spreadsheet (.xlsx)"
+        drop_text = ("Drag your spreadsheet (.xlsx or .csv) here" if self.dnd
+                     else "Choose your spreadsheet (.xlsx or .csv)")
         self.drop_label = tk.Label(inner, text=drop_text, background=DROP_BG, foreground="#34495E",
                                    font=("Helvetica", 14))
         self.drop_label.pack()
@@ -168,7 +169,7 @@ class App:
         initial = self.settings.get("last_dir") or str(Path.home())
         path = filedialog.askopenfilename(
             parent=self.root, title="Choose this week's spreadsheet", initialdir=initial,
-            filetypes=[("Excel spreadsheets", "*.xlsx *.xlsm"), ("All files", "*.*")])
+            filetypes=[("Spreadsheets", "*.xlsx *.xlsm *.csv"), ("All files", "*.*")])
         if path:
             self.load_file(path)
 
@@ -182,9 +183,7 @@ class App:
         self.sheet = sheet
         self.settings["last_dir"] = str(path.parent)
         storage.save_settings(self.settings)
-        n = sheet.customer_count
-        self.file_status.configure(
-            text=f"✓  {path.name}  —  {n} customer{'s' if n != 1 else ''} found", style="Ok.TLabel")
+        self._refresh_file_status()
         if len(sheet.sheet_names) > 1:
             self.sheet_combo.configure(values=sheet.sheet_names)
             self.sheet_var.set(sheet.sheet_name)
@@ -193,8 +192,26 @@ class App:
             self.sheet_combo.pack_forget()
         self.status.configure(text="")
         self._choose_layout_for(sheet)
+        day = sheet_delivery_date(sheet)
+        if day is not None:  # the file says when these go out: pre-select it
+            self.date_picker.set(day)
+        self._refresh_file_status()
         self._refresh_mapping_status()
         self._refresh_generate_state()
+
+    def slip_count(self) -> int:
+        if self.sheet is None:
+            return 0
+        return len(self.mapping.records(self.sheet.rows)) if self.mapping else len(self.sheet.rows)
+
+    def _refresh_file_status(self):
+        if self.sheet is None:
+            return
+        n = self.slip_count()
+        text = f"✓  {self.sheet.path.name}  —  {n} {'order' if self.mapping and self.mapping.items_mode == 'rows' else 'customer'}{'s' if n != 1 else ''}"
+        if self.mapping and self.mapping.items_mode == "rows":
+            text += f" ({len(self.sheet.rows)} item rows)"
+        self.file_status.configure(text=text, style="Ok.TLabel")
 
     def _fit(self, name: str, sheet: Sheet) -> int:
         m = load_mapping(name)
@@ -276,11 +293,14 @@ class App:
         self._refresh_generate_state()
 
     def _refresh_mapping_status(self):
+        self._refresh_file_status()  # the slip count depends on the matches (grouped orders)
         if self.mapping is None or self.mapping.is_empty():
             self.map_status.configure(text="Columns: not matched for this layout yet")
             return
         n = sum(1 for v in self.mapping.columns.values() if v)
-        text = f"Columns: using this layout's saved matches ({n} columns"
+        text = f"Columns: saved matches ({n} columns"
+        if self.mapping.items_mode == "rows":
+            text += f"; items grouped by “{self.mapping.group_by}”"
         if self.mapping.items_mode == "columns":
             if self.sheet is not None:
                 text += f" + {len(self.mapping.item_headers(self.sheet.headers))} menu items"
@@ -369,7 +389,7 @@ class App:
 
         out = self._output_path()
         self.gen_btn.state(["disabled"])
-        self.progress.configure(maximum=max(self.sheet.customer_count, 1), value=0)
+        self.progress.configure(maximum=max(self.slip_count(), 1), value=0)
         self.progress.pack(fill="x", pady=(8, 0), before=self.status)
         self.status.configure(text="Making pack slips…", style="Muted.TLabel")
         self.root.configure(cursor="watch")

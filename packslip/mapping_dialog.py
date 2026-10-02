@@ -6,15 +6,15 @@ import copy
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from .mapping import ITEM_KEYS, Mapping, auto_map, guess_columns
+from .mapping import DEFAULT_FIELDS, ITEM_KEYS, Mapping, auto_map, guess_columns
 from .spreadsheet import Sheet
 from .ui_common import ScrollFrame, center_on
 
 NOT_USED_LABEL = "(not used)"
 START_LABEL = "(first column)"
 END_LABEL = "(last column)"
-BUILT_IN_KEYS = {"customer_name", "phone", "address", "order_date", "order_number",
-                 "notes", "total", "paid", "items", "quantity"}
+BUILT_IN_KEYS = {f["key"] for f in DEFAULT_FIELDS}
+NONE_LABEL = "(none)"
 
 
 class MappingDialog(tk.Toplevel):
@@ -133,9 +133,37 @@ class MappingDialog(tk.Toplevel):
         self.items_preview = ttk.Label(self.body, text="", foreground="#1E7B34", wraplength=720)
         self.items_preview.grid(row=r, column=0, columnspan=4, sticky="w", padx=(24, 0), pady=(0, 6))
         r += 1
+
+        ttk.Radiobutton(self.body, text="Each row is one item (an order takes up several rows)", value="rows",
+                        variable=self.mode, command=self._update_items_preview).grid(
+            row=r, column=0, columnspan=4, sticky="w")
+        r += 1
+        self.group_var = tk.StringVar(value=self.mapping.group_by or (self.sheet.headers[0] if self.sheet.headers else ""))
+        self.variant_var = tk.StringVar(value=self.mapping.variant_col or NONE_LABEL)
+        self.detail_var = tk.StringVar(value=self.mapping.detail_col or NONE_LABEL)
+        for label, var, values in (
+                ("Rows with the same", self.group_var, self.sheet.headers),
+                ("Item size / variant", self.variant_var, [NONE_LABEL] + self.sheet.headers),
+                ("Item details (e.g. custom-meal parts)", self.detail_var, [NONE_LABEL] + self.sheet.headers)):
+            line = ttk.Frame(self.body)
+            line.grid(row=r, column=0, columnspan=4, sticky="w", padx=(24, 0), pady=2)
+            ttk.Label(line, text=label, width=32).pack(side="left")
+            c = ttk.Combobox(line, textvariable=var, values=values, state="readonly", width=24)
+            c.pack(side="left", padx=4)
+            if var is self.group_var:
+                ttk.Label(line, text="are one order").pack(side="left")
+            c.bind("<<ComboboxSelected>>", lambda e: (self.mode.set("rows"), self._update_items_preview()))
+            r += 1
+        self.rows_preview = ttk.Label(self.body, text="", foreground="#1E7B34", wraplength=720)
+        self.rows_preview.grid(row=r, column=0, columnspan=4, sticky="w", padx=(24, 0), pady=(0, 6))
+        r += 1
+
         ttk.Radiobutton(self.body, text="All items are listed in one column", value="single",
                         variable=self.mode, command=self._update_items_preview).grid(
             row=r, column=0, columnspan=4, sticky="w")
+        r += 1
+        ttk.Label(self.body, text="Item name and quantity columns (for the two options above):",
+                  foreground="#555555").grid(row=r, column=0, columnspan=4, sticky="w", padx=(24, 0), pady=(4, 0))
         r += 1
         for f in self.mapping.fields:
             if f["key"] in ITEM_KEYS:
@@ -151,12 +179,29 @@ class MappingDialog(tk.Toplevel):
         after, before = self.after_var.get(), self.before_var.get()
         self.mapping.items_after = "" if after == START_LABEL else after
         self.mapping.items_before = "" if before == END_LABEL else before
+        self.mapping.group_by = self.group_var.get() if self.mapping.items_mode == "rows" else ""
+        variant, detail = self.variant_var.get(), self.detail_var.get()
+        self.mapping.variant_col = "" if variant == NONE_LABEL else variant
+        self.mapping.detail_col = "" if detail == NONE_LABEL else detail
         if self.mapping.items_mode == "columns":
             for k in ITEM_KEYS:
                 self.mapping.columns.pop(k, None)
 
     def _update_items_preview(self):
         self._collect()
+        self.rows_preview.configure(text="")
+        if self.mapping.items_mode == "rows":
+            self.items_preview.configure(text="")
+            orders = self.mapping.records(self.sheet.rows)
+            if not self.mapping.columns.get("items"):
+                self.rows_preview.configure(text="Choose the item name column below.", foreground="#B00020")
+                return
+            first = self.mapping.item_rows(orders[0]) if orders else []
+            sample = ", ".join(f"{q} × {n}" for n, q, _ in first[:3]) + (" …" if len(first) > 3 else "")
+            self.rows_preview.configure(
+                text=f"✓ {len(self.sheet.rows)} rows → {len(orders)} orders (one pack slip each). "
+                     f"First order: {sample}", foreground="#1E7B34")
+            return
         if self.mapping.items_mode != "columns":
             self.items_preview.configure(text="")
             return
@@ -198,6 +243,11 @@ class MappingDialog(tk.Toplevel):
         if m.is_empty():
             messagebox.showwarning("Nothing matched",
                                    "Match at least one field to a spreadsheet column before saving.", parent=self)
+            return
+        if m.items_mode == "rows" and not (m.group_by and m.columns.get("items")):
+            messagebox.showwarning("Missing item columns",
+                                   "Choose which column groups rows into an order, and which column has the "
+                                   "item name.", parent=self)
             return
         if m.items_mode == "columns" and not m.item_headers(self.sheet.headers):
             messagebox.showwarning("No menu items",

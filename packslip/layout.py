@@ -144,28 +144,35 @@ def inner_box(el: dict) -> tuple[float, float, float, float]:
 #   ("rect", x, y, w, h, stroke_color)
 #   ("line", x1, y1, x2, y2, color)
 
-ROW_PAD = 0.5  # extra space per row, as a fraction of font size
+ROW_PAD = 0.5       # extra space per row, as a fraction of font size
+DETAIL_SCALE = 0.8  # item details (e.g. custom-meal components) print smaller, under the name
+DETAIL_COLOR = "#555555"
 
 
 def _items_rows(items, family, size, name_w_total, show_boxes):
     regular, bold = pdf_font(family, False, False), pdf_font(family, True, False)
+    italic = pdf_font(family, False, True)
     gap = size * 0.6
     box = size * 0.85 if show_boxes else 0.0
-    qtys = [sanitize(q) for _, q in items]
+    qtys = [sanitize(it[1]) for it in items]
     qty_w = max([stringWidth(q, bold, size) for q in qtys] + [stringWidth("0", bold, size)])
     name_x = (box + gap if box else 0.0) + qty_w + gap
     name_w = max(name_w_total - name_x, 10.0)
-    lead = size * LEADING
+    lead, dsize = size * LEADING, size * DETAIL_SCALE
     rows, y = [], 0.0
-    for (name, _), q in zip(items, qtys):
-        lines = wrap(sanitize(name), regular, size, name_w)
-        h = len(lines) * lead + size * ROW_PAD
-        rows.append((q, lines, y, h))
+    for it, q in zip(items, qtys):
+        lines = wrap(sanitize(it[0]), regular, size, name_w)
+        detail = it[2] if len(it) > 2 else ""
+        dlines = wrap(sanitize(detail), italic, dsize, name_w) if detail else []
+        h = len(lines) * lead + len(dlines) * dsize * LEADING + size * ROW_PAD
+        rows.append((q, lines, dlines, y, h))
         y += h
     return rows, y, box, gap, qty_w, name_x
 
 
-def items_primitives(el: dict, items: list[tuple[str, str]], color: str, line_color: str) -> list[tuple]:
+def items_primitives(el: dict, items: list[tuple], color: str, line_color: str,
+                     detail_color: str = DETAIL_COLOR) -> list[tuple]:
+    """items: [(name, quantity, detail)] (detail optional)."""
     x, y0, w, h = el["x"], el["y"], el["w"], el["h"]
     family = el.get("font", "Helvetica")
     size = float(el.get("size", 12))
@@ -179,7 +186,7 @@ def items_primitives(el: dict, items: list[tuple[str, str]], color: str, line_co
             size = max(MIN_SIZE, size - 0.5)
             rows, total, box, gap, qty_w, name_x = _items_rows(items, family, size, w, show_boxes)
 
-    lead = size * LEADING
+    lead, dsize = size * LEADING, size * DETAIL_SCALE
     regular = pdf_font(family, False, False)
     asc = ascent(regular, size)
     out: list[tuple] = []
@@ -187,14 +194,14 @@ def items_primitives(el: dict, items: list[tuple[str, str]], color: str, line_co
     if total > h + 0.01:  # still too long: keep what fits, then a "+ N more" line
         kept, used = [], 0.0
         for r in rows:
-            if used + r[3] + lead > h + 0.01:
+            if used + r[4] + lead > h + 0.01:
                 break
             kept.append(r)
-            used += r[3]
+            used += r[4]
         overflow = len(rows) - len(kept)
         rows = kept
 
-    for q, lines, ry, rh in rows:
+    for q, lines, dlines, ry, rh in rows:
         top = y0 + ry + size * ROW_PAD / 2
         base = top + asc
         if box:
@@ -202,10 +209,14 @@ def items_primitives(el: dict, items: list[tuple[str, str]], color: str, line_co
         out.append(("text", x + (box + gap if box else 0) + qty_w, base, q, family, True, False, size, color, "right"))
         for i, line in enumerate(lines):
             out.append(("text", x + name_x, base + i * lead, line, family, False, False, size, color, "left"))
+        dbase = base + (len(lines) - 1) * lead + dsize * LEADING
+        for i, line in enumerate(dlines):
+            out.append(("text", x + name_x, dbase + i * dsize * LEADING, line, family, False, True, dsize,
+                        detail_color, "left"))
         if el.get("row_lines", True) and line_color:
             out.append(("line", x, y0 + ry + rh, x + w, y0 + ry + rh, line_color))
     if overflow:
-        end = rows[-1][2] + rows[-1][3] if rows else 0.0
+        end = rows[-1][3] + rows[-1][4] if rows else 0.0
         out.append(("text", x + name_x, y0 + end + size * ROW_PAD / 2 + asc,
                     f"+ {overflow} more item{'s' if overflow != 1 else ''} (not enough room - make this box bigger)",
                     family, False, True, size, color, "left"))

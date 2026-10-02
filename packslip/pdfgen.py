@@ -180,8 +180,9 @@ def generate_pdf(out_path: str | Path, template: Template, mapping: Mapping, she
         c = rl_canvas.Canvas(str(tmp), pagesize=(w, h), pageCompression=1)
         c.setTitle(f"Pack Slips – {sheet.path.stem}")
         c.setCreator(APP_NAME)
-        total = len(sheet.rows)
-        for i, row in enumerate(sheet.rows, 1):
+        records = mapping.records(sheet.rows)  # one per pack slip (orders grouped in rows mode)
+        total = len(records)
+        for i, row in enumerate(records, 1):
             values = mapping.values_for_row(row)
             values.update(extra or {})
             draw_page(c, template, values, mapping, images)

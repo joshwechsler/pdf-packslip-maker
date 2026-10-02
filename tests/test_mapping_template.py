@@ -80,7 +80,7 @@ def test_item_rows_skip_unordered_and_compute_totals():
     from packslip.mapping import ITEMS_KEY, auto_map
     m = auto_map(Mapping(), REAL_HEADERS, _real_rows())
     v = m.values_for_row(_real_rows()[0])
-    assert v[ITEMS_KEY] == [("Backyard Italian Pasta", "1"), ("Insulated Cooler Bag", "2")]
+    assert v[ITEMS_KEY] == [("Backyard Italian Pasta", "1", ""), ("Insulated Cooler Bag", "2", "")]
     assert v["item_count"] == "3" and v["phone"] == "(203) 555-0147"
     assert v["items"] == "Backyard Italian Pasta\nInsulated Cooler Bag"
 

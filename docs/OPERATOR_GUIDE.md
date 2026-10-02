@@ -20,7 +20,7 @@ The PDF is saved in the **same folder as your spreadsheet**, named **Pack Slips 
 
 ## A second business
 
-Each business has its own **layout**, with its own columns, logo and delivery day. Just drop in that business's spreadsheet: the app switches to the matching layout by itself. The very first time, it asks if it's a different business. Choose **make a new layout**, name it, check the column matches, then use **Edit Layout…** to add that business's logo.
+Each business has its own **layout**, with its own columns, logo and delivery day. Just drop in that business's spreadsheet (.xlsx or .csv, including exports with one row per item): the app switches to the matching layout by itself. The very first time, it asks if it's a different business. Choose **make a new layout**, name it, check the column matches, then use **Edit Layout…** to add that business's logo.
 
 ## If something looks wrong
 

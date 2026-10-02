@@ -20,6 +20,33 @@ def default_delivery_date(weekday: int | None, today: dt.date | None = None) -> 
     return tomorrow + dt.timedelta(days=(weekday - tomorrow.weekday()) % 7)
 
 
+DATE_COLUMNS = ["delivery date", "fulfillment date", "ship date", "pickup date", "delivery day"]
+_FORMATS = ["%m/%d/%Y", "%m/%d/%y", "%Y-%m-%d", "%b %d, %Y", "%B %d, %Y", "%d-%b-%Y"]
+
+
+def parse_date(text: str) -> dt.date | None:
+    text = " ".join(text.split())
+    for fmt in _FORMATS:
+        try:
+            return dt.datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def sheet_delivery_date(sheet) -> dt.date | None:
+    """If the spreadsheet has a delivery/fulfillment date column holding one single date, return it."""
+    def norm(h):
+        return " ".join(h.lower().replace("_", " ").split())
+    for name in DATE_COLUMNS:
+        for h in sheet.headers:
+            if norm(h) == name:
+                days = {parse_date(r.get(h, "")) for r in sheet.rows if r.get(h, "").strip()}
+                if len(days) == 1 and None not in days:
+                    return days.pop()
+    return None
+
+
 class DatePicker(ttk.Frame):
     def __init__(self, master, initial: dt.date, command=None):
         super().__init__(master)

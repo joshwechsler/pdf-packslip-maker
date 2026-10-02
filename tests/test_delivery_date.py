@@ -46,3 +46,12 @@ def test_old_saved_mapping_with_delivery_column_field_is_cleaned():
     save_mapping(Mapping.from_json(data), "Standard")
     keys = [f["key"] for f in load_mapping("Standard").all_fields()]
     assert keys.count("delivery_date") == 1
+
+
+def test_single_fulfillment_date_in_file_is_preselected(tmp_path):
+    from packslip.datepicker import sheet_delivery_date
+    p = tmp_path / "f.csv"
+    p.write_text("Order,Customer,Fulfillment Date\n1,A,10/04/2026\n2,B,10/04/2026\n")
+    assert sheet_delivery_date(load(p)) == dt.date(2026, 10, 4)
+    p.write_text("Order,Customer,Fulfillment Date\n1,A,10/04/2026\n2,B,10/05/2026\n")
+    assert sheet_delivery_date(load(p)) is None  # mixed dates: leave the picker alone

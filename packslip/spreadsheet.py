@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import csv
 import datetime as dt
+import io
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -72,15 +74,17 @@ def _open(path: Path):
             "Open it in Excel or Numbers and use File → Save As (or Export) to save it "
             "as an Excel Workbook (.xlsx), then try again."
         )
-    if suffix in (".numbers", ".csv", ".ods"):
+    if suffix in (".numbers", ".ods"):
         raise SpreadsheetError(
-            f"This app reads Excel files (.xlsx), but this file is a {suffix} file.\n\n"
+            f"This app reads Excel (.xlsx) and .csv files, but this file is a {suffix} file.\n\n"
             "Open it in Numbers or Excel and export it as an Excel Workbook (.xlsx), then try again."
         )
-    if suffix not in (".xlsx", ".xlsm"):
+    if suffix not in (".xlsx", ".xlsm", ".csv"):
         raise SpreadsheetError(
-            f"“{path.name}” isn't an Excel spreadsheet. Please choose a file ending in .xlsx."
+            f"“{path.name}” isn't a spreadsheet this app can read. Please choose a file ending in .xlsx or .csv."
         )
+    if suffix == ".csv":
+        return None
     try:
         return load_workbook(path, read_only=True, data_only=True)
     except (InvalidFileException, zipfile.BadZipFile, KeyError, ValueError, OSError):
@@ -113,9 +117,34 @@ def _find_header_row(raw: list[tuple]) -> int:
     return counts.index(widest)
 
 
+def _read_csv(path: Path) -> list[tuple]:
+    data = path.read_bytes()
+    for enc in ("utf-8-sig", "cp1252", "latin-1"):
+        try:
+            text = data.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if "\x00" in text:
+        raise SpreadsheetError(f"“{path.name}” doesn't look like a text .csv file. Try exporting it again.")
+    try:
+        dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    return [tuple(r) for r in csv.reader(io.StringIO(text), dialect)]
+
+
 def load(path: str | Path, sheet_name: str | None = None) -> Sheet:
     path = Path(path)
     wb = _open(path)
+    if wb is None:  # .csv
+        raw, title, names = _read_csv(path), path.stem, [path.stem]
+    else:
+        raw, title, names = _read_workbook(wb, sheet_name)
+    return _build(path, raw, title, names)
+
+
+def _read_workbook(wb, sheet_name):
     try:
         names = list(wb.sheetnames)
         if sheet_name and sheet_name in names:
@@ -131,7 +160,10 @@ def load(path: str | Path, sheet_name: str | None = None) -> Sheet:
         title = ws.title
     finally:
         wb.close()
+    return raw, title, names
 
+
+def _build(path: Path, raw: list[tuple], title: str, names: list[str]) -> Sheet:
     hidx = _find_header_row(raw)
     if hidx < 0:
         raise SpreadsheetError(

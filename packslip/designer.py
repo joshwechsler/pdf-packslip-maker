@@ -161,10 +161,14 @@ class Designer(tk.Toplevel):
         ttk.Label(p, text=help_text, foreground="#666666", wraplength=290).pack(side="bottom", anchor="w", pady=(8, 0))
 
     # ------------------------------------------------------- preview values
+    def _records(self) -> list:
+        return self.mapping.records(self.sheet.rows) if self.sheet else []
+
     def _values(self) -> dict:
-        if self.sheet and self.sheet.rows:
-            self.preview_index %= len(self.sheet.rows)
-            vals = self.mapping.values_for_row(self.sheet.rows[self.preview_index])
+        records = self._records()
+        if records:
+            self.preview_index %= len(records)
+            vals = self.mapping.values_for_row(records[self.preview_index])
         else:
             vals = self.mapping.sample_values()
         if self.extra_values:
@@ -172,15 +176,17 @@ class Designer(tk.Toplevel):
         return vals
 
     def _step_preview(self, d):
-        if self.sheet and self.sheet.rows:
-            self.preview_index = (self.preview_index + d) % len(self.sheet.rows)
+        records = self._records()
+        if records:
+            self.preview_index = (self.preview_index + d) % len(records)
         self.redraw()
 
     def _update_preview_label(self):
-        if self.sheet and self.sheet.rows:
+        records = self._records()
+        if records:
             name = self._values().get("customer_name") or "customer"
             self.preview_label.configure(
-                text=f"Previewing: {name[:22]}  ({self.preview_index + 1} of {len(self.sheet.rows)})")
+                text=f"Previewing: {name[:22]}  ({self.preview_index + 1} of {len(records)})")
         else:
             self.preview_label.configure(text="Previewing sample data")
 
