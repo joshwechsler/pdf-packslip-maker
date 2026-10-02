@@ -6,3 +6,4 @@ dist/
 .pytest_cache/
 *.egg-info/
 /out/
+packslip/_build.py

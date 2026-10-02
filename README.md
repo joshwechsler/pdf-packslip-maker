@@ -6,9 +6,8 @@ Python, terminal, or subscriptions needed on the Operator's Mac.
 
 - **Operator instructions (one page):** [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md).
   The build turns this into `How to use Packs Be Slippin'.pdf` inside the download zip.
-- **Download the app:** GitHub → **Actions** → *Build macOS app* → latest run →
-  **Artifacts → Packs-Be-Slippin-mac**. Pushing a tag like `v1.0.0` also attaches the
-  zip to a GitHub Release.
+- **Download the app:** [latest release](https://github.com/joshwechsler/pdf-packslip-maker/releases/latest)
+  → `Packs-Be-Slippin-mac.zip`. Installed apps update themselves (see *Updates* below).
 
 ## How it works
 
@@ -74,6 +73,28 @@ CI (`.github/workflows/build-macos.yml`) builds on every push. To build locally 
 
 `packaging/hooks/hook-tkinterdnd2.py` replaces the stock hook so both the Intel and
 Apple Silicon drag-and-drop libraries are bundled.
+
+## Updates (in-app)
+
+Every successful build of `claude/packslip-app` or `main` publishes a GitHub Release tagged
+`build-<run number>` with the zip attached. CI stamps the number into `packslip/_build.py`.
+
+- On launch (and via **Check for Updates**), the Mac app asks
+  `api.github.com/repos/joshwechsler/pdf-packslip-maker/releases/latest`. If that build is
+  newer, it offers **Update Now**. Offline, nothing happens.
+- Install steps (`packslip/updater.py`):
+  1. Download with `/usr/bin/curl`, so there's no quarantine flag and no second Gatekeeper prompt.
+  2. Check the release's SHA-256.
+  3. Unzip with `ditto`.
+  4. Run `codesign --verify` on the new app.
+  5. A small script waits for the app to quit, swaps the bundle (restoring the old one on
+     failure) and reopens it.
+- Only the version check goes to GitHub. No spreadsheet or customer data is sent.
+- If macOS runs the app from a translocated path (not moved into Applications), or the
+  folder isn't writable, the app explains what to do instead.
+- CI runs `--selftest-update` on macOS against the freshly built zip before publishing.
+
+The first build with the updater has to be installed by hand once.
 
 ## Differences from the SRS
 

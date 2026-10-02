@@ -14,8 +14,8 @@ from reportlab.platypus import ListFlowable, ListItem, Paragraph, SimpleDocTempl
 NAVY = HexColor("#111111")
 H1 = ParagraphStyle("h1", fontName="Helvetica-Bold", fontSize=22, leading=26, textColor=NAVY, spaceAfter=6)
 H2 = ParagraphStyle("h2", fontName="Helvetica-Bold", fontSize=14, leading=18, textColor=NAVY,
-                    spaceBefore=12, spaceAfter=4)
-BODY = ParagraphStyle("body", fontName="Helvetica", fontSize=11, leading=15)
+                    spaceBefore=10, spaceAfter=3)
+BODY = ParagraphStyle("body", fontName="Helvetica", fontSize=10.5, leading=13.5)
 
 
 def inline(text):
@@ -56,8 +56,8 @@ def build(md_path, out_path):
             story.append(Paragraph(inline(line), BODY))
             story.append(Spacer(1, 4))
     flush()
-    doc = SimpleDocTemplate(out_path, pagesize=letter, leftMargin=54, rightMargin=54, topMargin=48,
-                            bottomMargin=48, title="How to use Packs Be Slippin'")
+    doc = SimpleDocTemplate(out_path, pagesize=letter, leftMargin=54, rightMargin=54, topMargin=40,
+                            bottomMargin=36, title="How to use Packs Be Slippin'")
     doc.build(story)
 
 

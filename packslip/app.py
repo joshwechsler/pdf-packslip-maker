@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import queue
 import sys
+import threading
 import tkinter as tk
 import traceback
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import APP_NAME, __version__, storage
+from . import APP_NAME, __version__, storage, updater
 from . import template as T
 from .designer import Designer
 from .mapping import Mapping, load_mapping, migrate_legacy_mapping, save_mapping
@@ -57,6 +59,9 @@ class App:
         self._refresh_templates()
         self._refresh_mapping_status()
         self._refresh_generate_state()
+
+        if updater.can_self_update():
+            root.after(2500, lambda: self.check_updates(quiet=True))
 
         if IS_MAC:
             # Files dropped on the Dock icon or opened via Finder's "Open With".
@@ -135,8 +140,12 @@ class App:
         self.status = ttk.Label(outer, text="", style="Muted.TLabel")
         self.status.pack(anchor="w", pady=(8, 0))
 
-        ttk.Label(outer, text=f"Version {__version__}", style="Muted.TLabel",
-                  font=("Helvetica", 10)).pack(side="bottom", anchor="e")
+        footer = ttk.Frame(outer)
+        footer.pack(side="bottom", fill="x")
+        ttk.Label(footer, text=f"Version {__version__} ({updater.describe_current()})", style="Muted.TLabel",
+                  font=("Helvetica", 10)).pack(side="right")
+        ttk.Button(footer, text="Check for Updates", command=lambda: self.check_updates(quiet=False)).pack(
+            side="right", padx=8)
 
         if self.dnd:
             for w in (self.root, self.drop, inner, self.drop_label):
@@ -442,6 +451,96 @@ class App:
         center_on(win, self.root)
         win.grab_set()
         open_btn.focus_set()
+
+    # ------------------------------------------------------------- updates
+    def _in_background(self, work, done):
+        """Run work() on a thread; call done(result, error) back on the Tk thread."""
+        q: queue.Queue = queue.Queue()
+
+        def run():
+            try:
+                q.put((work(), None))
+            except Exception as e:  # noqa: BLE001 - reported to the user below
+                q.put((None, e))
+
+        def poll():
+            try:
+                result, error = q.get_nowait()
+            except queue.Empty:
+                self.root.after(150, poll)
+                return
+            done(result, error)
+
+        threading.Thread(target=run, daemon=True).start()
+        self.root.after(150, poll)
+
+    def _busy_elsewhere(self) -> bool:
+        return any(isinstance(w, tk.Toplevel) and w.winfo_exists() for w in self.root.winfo_children())
+
+    def check_updates(self, quiet: bool):
+        if not updater.can_self_update():
+            if not quiet:
+                messagebox.showinfo("Updates", "Updates can only be installed in the Mac app.", parent=self.root)
+            return
+        if quiet and self._busy_elsewhere():  # don't interrupt another window; ask again shortly
+            self.root.after(30_000, lambda: self.check_updates(quiet=True))
+            return
+
+        def done(info, error):
+            if info is None:
+                if not quiet:
+                    messagebox.showinfo("Up to date", f"You have the latest version ({updater.describe_current()}).",
+                                        parent=self.root)
+                return
+            self._offer_update(info)
+
+        self._in_background(updater.check_for_update, done)
+
+    def _offer_update(self, info):
+        designer = getattr(self, "_designer", None)
+        if designer is not None and designer.winfo_exists():
+            messagebox.showinfo("Update available",
+                                "A new version is ready. Close the Edit Layout window, then click "
+                                "“Check for Updates” to install it.", parent=self.root)
+            return
+        choice = ask_choice(
+            self.root, "Update available",
+            f"A new version of {APP_NAME} is ready (build {info.build}; you have {updater.describe_current()}).\n\n"
+            "Updating takes about a minute. The app closes and reopens by itself. Your layouts, column "
+            "matches and logos are kept.",
+            ["Update Now", "Later"])
+        if choice == 0:
+            self._install_update(info)
+
+    def _install_update(self, info):
+        win = tk.Toplevel(self.root)
+        win.title("Updating")
+        win.transient(self.root)
+        win.resizable(False, False)
+        f = ttk.Frame(win, padding=20)
+        f.pack(fill="both", expand=True)
+        ttk.Label(f, text=f"Downloading the new version of {APP_NAME}…").pack(anchor="w")
+        bar = ttk.Progressbar(f, mode="indeterminate", length=320)
+        bar.pack(fill="x", pady=(10, 0))
+        bar.start(12)
+        win.protocol("WM_DELETE_WINDOW", lambda: None)  # can't cancel mid-download
+        center_on(win, self.root)
+        win.grab_set()
+
+        def done(result, error):
+            bar.stop()
+            win.destroy()
+            if error is not None:
+                msg = str(error) if isinstance(error, updater.UpdateError) else \
+                    "Something went wrong while downloading the update."
+                messagebox.showerror("Couldn't update", f"{msg}\n\nYou can keep using this version.",
+                                     parent=self.root)
+                return
+            new_app, bundle, work = result
+            updater.start_swap(new_app, bundle, work)
+            self.root.destroy()  # the swap script waits for us to quit, then reopens the new version
+
+        self._in_background(lambda: updater.prepare_update(info), done)
 
     # -------------------------------------------------------------- errors
     def _unexpected_error(self, exc, val, tb):

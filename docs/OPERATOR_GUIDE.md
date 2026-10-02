@@ -22,6 +22,10 @@ The PDF is saved in the **same folder as your spreadsheet**, named **Pack Slips 
 
 Each business has its own **layout**, with its own columns, logo and delivery day. Just drop in that business's spreadsheet (.xlsx or .csv, including exports with one row per item): the app switches to the matching layout by itself. The very first time, it asks if it's a different business. Choose **make a new layout**, name it, check the column matches, then use **Edit Layout…** to add that business's logo.
 
+## Updates
+
+When a new version is ready, the app asks when it opens. Click **Update Now**: it closes and reopens by itself in about a minute, and your layouts are kept. (You can also click **Check for Updates** at the bottom of the window.)
+
 ## If something looks wrong
 
 - **New dishes this week?** Nothing to do. Every column between **Address** and **Delivery Fee** is treated as a menu item, so new or renamed dishes are picked up automatically. Keep those two headings as they are.

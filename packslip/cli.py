@@ -4,12 +4,15 @@
     "Packs Be Slippin'" --generate in.xlsx [--delivery-date YYYY-MM-DD] [--out out.pdf] [--template NAME]
     "Packs Be Slippin'" --selftest [--out out.pdf]  build a PDF from generated data; exit 0 if OK
     "Packs Be Slippin'" --selftest-gui              open and close every window; exit 0 if OK
+    "Packs Be Slippin'" --selftest-update app.zip   (macOS) unpack a release zip and test the swap
+    "Packs Be Slippin'" --check-update              ask GitHub whether a newer build exists
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -82,6 +85,33 @@ def _selftest_gui() -> int:
     return 0
 
 
+def _selftest_update(zip_path: str) -> int:
+    """macOS CI check of the update install: unpack a release zip, verify it, and swap it over a
+    stand-in 'old' app while a stand-in process plays the running app."""
+    from . import updater
+
+    root = Path(tempfile.mkdtemp(prefix="packslip-updtest-"))
+    old = root / f"{updater.APP_NAME}.app"
+    (old / "Contents").mkdir(parents=True)
+    (old / "Contents" / "OLD-VERSION").write_text("old")
+    work = root / ".update-work"
+    work.mkdir()
+    new_app = updater.unpack(Path(zip_path), work)  # ditto + quarantine strip + codesign check
+    sleeper = subprocess.Popen(["/bin/sleep", "2"])
+    os.environ["OPEN_CMD"] = "/usr/bin/true"
+    proc = updater.start_swap(new_app, old, work, pid=sleeper.pid)
+    sleeper.wait()
+    proc.wait(timeout=60)
+    exe = old / "Contents" / "MacOS" / updater.APP_NAME
+    ok = (exe.exists() and not (old / "Contents" / "OLD-VERSION").exists() and not work.exists()
+          and not old.with_name(old.name + ".previous-version").exists()
+          and subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(old)]).returncode == 0
+          and subprocess.run([str(exe), "--selftest"], capture_output=True).returncode == 0)
+    print(f"selftest-update: swapped={exe.exists()} -> {'OK' if ok else 'FAIL'}")
+    time.sleep(0.1)
+    return 0 if ok else 1
+
+
 def _generate(src: str, out: str | None, template_name: str | None, delivery: str | None = None) -> int:
     import datetime as dt
     from . import template as T
@@ -124,12 +154,22 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--delivery-date", metavar="YYYY-MM-DD")
     p.add_argument("--selftest", action="store_true")
     p.add_argument("--selftest-gui", action="store_true")
+    p.add_argument("--selftest-update", metavar="ZIP")
+    p.add_argument("--check-update", action="store_true")
     args = p.parse_args(argv)
 
     if args.selftest:
         return _selftest(args.out)
     if args.selftest_gui:
         return _selftest_gui()
+    if args.selftest_update:
+        return _selftest_update(args.selftest_update)
+    if args.check_update:
+        from . import updater
+        print(f"current: {updater.describe_current()}; self-update possible: {updater.can_self_update()}")
+        info = updater.check_for_update()
+        print(f"newer release: build {info.build} ({info.size} bytes)" if info else "no newer release")
+        return 0
     if args.generate:
         return _generate(args.generate, args.out, args.template, args.delivery_date)
 
