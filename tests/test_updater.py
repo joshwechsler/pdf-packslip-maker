@@ -90,8 +90,17 @@ def test_manual_check_reports_connection_problems(monkeypatch):
 def test_pretend_build_finds_newer_release(monkeypatch):
     import json
     monkeypatch.setattr(updater, "can_self_update", lambda: True)
-    monkeypatch.setattr(updater, "_fetch", lambda *a, **k: json.dumps(_release(tag="build-12")).encode())
+    monkeypatch.setattr(updater, "_fetch", lambda *a, **k: json.dumps({"build": 12, "sha256": "", "size": 1}).encode())
     monkeypatch.setenv("PACKSLIP_PRETEND_BUILD", "11")
     assert updater.check_for_update(raise_errors=True).build == 12
     monkeypatch.setenv("PACKSLIP_PRETEND_BUILD", "12")
     assert updater.check_for_update(raise_errors=True) is None
+
+
+def test_parse_manifest():
+    m = {"build": 19, "asset": updater.ASSET_NAME, "sha256": "cd" * 32, "size": 99}
+    info = updater.parse_manifest(m, current_build=18)
+    assert info.build == 19 and info.size == 99 and info.sha256 == "cd" * 32
+    assert info.url.endswith("/releases/download/build-19/" + updater.ASSET_NAME)
+    assert updater.parse_manifest(m, current_build=19) is None
+    assert updater.parse_manifest({"oops": 1}, current_build=1) is None

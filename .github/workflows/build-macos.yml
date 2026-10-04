@@ -106,6 +106,15 @@ jobs:
           path: Packs-Be-Slippin-mac.zip
           retention-days: 90
 
+      - name: Write update manifest (latest.json)
+        if: github.ref == 'refs/heads/claude/packslip-app' || github.ref == 'refs/heads/main'
+        run: |
+          SHA=$(shasum -a 256 Packs-Be-Slippin-mac.zip | cut -d' ' -f1)
+          SIZE=$(stat -f%z Packs-Be-Slippin-mac.zip)
+          printf '{"build": %s, "asset": "Packs-Be-Slippin-mac.zip", "sha256": "%s", "size": %s}\n' \
+            "${{ github.run_number }}" "$SHA" "$SIZE" > latest.json
+          cat latest.json
+
       # Installed apps check the latest release on launch and offer to update themselves.
       - name: Publish release for the in-app updater
         if: github.ref == 'refs/heads/claude/packslip-app' || github.ref == 'refs/heads/main'
@@ -116,7 +125,9 @@ jobs:
           target_commitish: ${{ github.sha }}
           body: ${{ github.event.head_commit.message }}
           make_latest: "true"
-          files: Packs-Be-Slippin-mac.zip
+          files: |
+            Packs-Be-Slippin-mac.zip
+            latest.json
 
       # Installed apps can only see releases if the repo is public. Prove this build is visible
       # to them: pretend to be build 1 and require the app (no GitHub login) to find this build,

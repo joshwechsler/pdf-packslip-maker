@@ -33,7 +33,11 @@ from . import APP_NAME
 
 REPO = "joshwechsler/pdf-packslip-maker"
 ASSET_NAME = "Packs-Be-Slippin-mac.zip"
-LATEST_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
+LATEST_URL = f"https://api.github.com/repos/{REPO}/releases/latest"  # used by builds <= 18
+# Each release also carries a tiny manifest. Fetching it through the normal download link
+# avoids the GitHub API's 60-requests-per-hour limit for anonymous clients.
+MANIFEST_NAME = "latest.json"
+MANIFEST_URL = f"https://github.com/{REPO}/releases/latest/download/{MANIFEST_NAME}"
 
 try:
     from ._build import BUILD  # written by CI; absent when running from source
@@ -131,13 +135,27 @@ def _fetch(url: str, timeout: int, dest: Path | None = None, accept: str = "") -
                       "Details: " + " | ".join(errors))
 
 
+def parse_manifest(data: dict, current_build: int) -> UpdateInfo | None:
+    """UpdateInfo from latest.json ({"build", "asset", "sha256", "size"}) if newer than current_build."""
+    try:
+        build = int(data["build"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if build <= current_build:
+        return None
+    asset = data.get("asset") or ASSET_NAME
+    return UpdateInfo(build=build, url=f"https://github.com/{REPO}/releases/download/build-{build}/{asset}",
+                      size=int(data.get("size") or 0), sha256=str(data.get("sha256") or ""),
+                      notes=str(data.get("notes") or ""))
+
+
 def check_for_update(timeout: int = 10, raise_errors: bool = False) -> UpdateInfo | None:
     """Ask GitHub for the latest release. None if up to date or not applicable.
     Connection problems raise UpdateError when raise_errors is set (a manual check), else return None."""
     if not can_self_update():
         return None
     try:
-        data = json.loads(_fetch(LATEST_URL, timeout, accept="application/vnd.github+json"))
+        data = json.loads(_fetch(MANIFEST_URL, timeout))
     except ValueError as e:
         if raise_errors:
             raise UpdateError("The update server sent an unexpected reply. Please try again later.") from e
@@ -146,7 +164,7 @@ def check_for_update(timeout: int = 10, raise_errors: bool = False) -> UpdateInf
         if raise_errors:
             raise
         return None
-    return parse_release(data, current_build())
+    return parse_manifest(data, current_build())
 
 
 def install_problem(bundle: Path) -> str | None:
