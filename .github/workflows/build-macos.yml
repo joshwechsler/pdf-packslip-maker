@@ -99,14 +99,6 @@ jobs:
       - name: Self-test the in-app update install (unzip, verify, swap)
         run: |
           "dist/Packs Be Slippin'.app/Contents/MacOS/Packs Be Slippin'" --selftest-update Packs-Be-Slippin-mac.zip
-          APP="dist/Packs Be Slippin'.app/Contents/MacOS/Packs Be Slippin'"
-          # The update check must really reach GitHub (a failed check used to look like "up to date"):
-          # pretend to be build 1 and require it to find the newest published release,
-          # once with curl and once with the built-in Python fallback.
-          PACKSLIP_PRETEND_BUILD=1 "$APP" --check-update | tee check.txt
-          grep -q "newer release: build" check.txt
-          PACKSLIP_PRETEND_BUILD=1 PACKSLIP_UPDATE_NO_CURL=1 "$APP" --check-update | tee check2.txt
-          grep -q "newer release: build" check2.txt
 
       - uses: actions/upload-artifact@v4
         with:
@@ -125,3 +117,20 @@ jobs:
           body: ${{ github.event.head_commit.message }}
           make_latest: "true"
           files: Packs-Be-Slippin-mac.zip
+
+      # Installed apps can only see releases if the repo is public. Prove this build is visible
+      # to them: pretend to be build 1 and require the app (no GitHub login) to find this build,
+      # once with curl and once with the built-in Python fallback.
+      - name: Verify installed apps can see this update
+        if: github.ref == 'refs/heads/claude/packslip-app' || github.ref == 'refs/heads/main'
+        run: |
+          APP="dist/Packs Be Slippin'.app/Contents/MacOS/Packs Be Slippin'"
+          for i in 1 2 3 4 5 6; do   # GitHub can take a few seconds to list a new release
+            PACKSLIP_PRETEND_BUILD=1 "$APP" --check-update | tee check.txt || true
+            grep -q "newer release: build ${{ github.run_number }} " check.txt && break
+            sleep 10
+          done
+          grep -q "newer release: build ${{ github.run_number }} " check.txt || {
+            echo "::error::Installed apps can't see this release. Is the repository public?"; exit 1; }
+          PACKSLIP_PRETEND_BUILD=1 PACKSLIP_UPDATE_NO_CURL=1 "$APP" --check-update | tee check2.txt
+          grep -q "newer release: build ${{ github.run_number }} " check2.txt
