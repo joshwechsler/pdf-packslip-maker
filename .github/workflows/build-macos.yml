@@ -18,17 +18,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # One-time cleanup: builds 11 and 12 point at history that was rewritten to remove a real
-      # phone number from test data. Remove those releases and tags. Safe to re-run.
-      - name: Remove releases built from pre-scrub history
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for t in build-11 build-12 build-13; do
-            gh release delete "$t" --cleanup-tag --yes -R "${{ github.repository }}" 2>/dev/null \
-              || git push origin ":refs/tags/$t" 2>/dev/null || true
-          done
-
       - name: Install universal2 Python from python.org
         run: |
           curl -fsSLo python.pkg "https://www.python.org/ftp/python/${PY_VERSION}/python-${PY_VERSION}-macos11.pkg"
