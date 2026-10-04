@@ -189,7 +189,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.check_update:
         from . import updater
         print(f"current: {updater.describe_current()}; self-update possible: {updater.can_self_update()}")
-        info = updater.check_for_update()
+        try:
+            info = updater.check_for_update(raise_errors=True)
+        except updater.UpdateError as e:
+            print(f"check FAILED: {e}")
+            return 1
         print(f"newer release: build {info.build} ({info.size} bytes)" if info else "no newer release")
         return 0
     if args.generate:

@@ -83,26 +83,70 @@ def running_app_bundle(executable: str | None = None) -> Path | None:
 
 
 def can_self_update() -> bool:
-    return sys.platform == "darwin" and BUILD > 0 and running_app_bundle() is not None
+    return sys.platform == "darwin" and current_build() > 0 and running_app_bundle() is not None
 
 
-def _curl(*args: str, timeout: int) -> bytes:
-    cmd = ["/usr/bin/curl", "-fsSL", "--max-time", str(timeout), "-H", f"User-Agent: {APP_NAME} updater", *args]
+def current_build() -> int:
+    # PACKSLIP_PRETEND_BUILD lets CI check that an older build really finds the newer release.
+    return int(os.environ.get("PACKSLIP_PRETEND_BUILD") or BUILD)
+
+
+def _fetch(url: str, timeout: int, dest: Path | None = None, accept: str = "") -> bytes:
+    """GET a URL with the Mac's own curl; if that fails, with Python + certifi's certificates.
+    Saves to `dest` if given. Raises UpdateError with the reasons from both."""
+    errors = []
+    if not os.environ.get("PACKSLIP_UPDATE_NO_CURL") and Path("/usr/bin/curl").exists():
+        cmd = ["/usr/bin/curl", "-fsSL", "--max-time", str(timeout), "-H", f"User-Agent: {APP_NAME} updater"]
+        if accept:
+            cmd += ["-H", f"Accept: {accept}"]
+        cmd += ["-o", str(dest), url] if dest else [url]
+        try:
+            r = subprocess.run(cmd, capture_output=True, timeout=timeout + 5)
+            if r.returncode == 0:
+                return r.stdout
+            errors.append(f"curl: {r.stderr.decode(errors='replace').strip() or f'exit code {r.returncode}'}")
+        except (OSError, subprocess.SubprocessError) as e:
+            errors.append(f"curl: {e}")
     try:
-        return subprocess.run(cmd, check=True, capture_output=True, timeout=timeout + 5).stdout
-    except (OSError, subprocess.SubprocessError) as e:
-        raise UpdateError("Couldn't reach the update server. Check the internet connection and try again.") from e
+        import ssl
+        import urllib.request
+        try:
+            import certifi
+            ctx = ssl.create_default_context(cafile=certifi.where())
+        except ImportError:
+            ctx = ssl.create_default_context()
+        headers = {"User-Agent": f"{APP_NAME} updater"}
+        if accept:
+            headers["Accept"] = accept
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=timeout,
+                                    context=ctx) as resp:
+            if dest is None:
+                return resp.read()
+            with open(dest, "wb") as f:
+                shutil.copyfileobj(resp, f)
+            return b""
+    except Exception as e:  # noqa: BLE001 - reported to the user
+        errors.append(f"python: {e}")
+    raise UpdateError("Couldn't reach the update server. Check the internet connection and try again.\n\n"
+                      "Details: " + " | ".join(errors))
 
 
-def check_for_update(timeout: int = 8) -> UpdateInfo | None:
-    """Ask GitHub for the latest release. Returns None if up to date, offline, or not applicable."""
+def check_for_update(timeout: int = 10, raise_errors: bool = False) -> UpdateInfo | None:
+    """Ask GitHub for the latest release. None if up to date or not applicable.
+    Connection problems raise UpdateError when raise_errors is set (a manual check), else return None."""
     if not can_self_update():
         return None
     try:
-        data = json.loads(_curl("-H", "Accept: application/vnd.github+json", LATEST_URL, timeout=timeout))
-    except (UpdateError, ValueError):
+        data = json.loads(_fetch(LATEST_URL, timeout, accept="application/vnd.github+json"))
+    except ValueError as e:
+        if raise_errors:
+            raise UpdateError("The update server sent an unexpected reply. Please try again later.") from e
         return None
-    return parse_release(data)
+    except UpdateError:
+        if raise_errors:
+            raise
+        return None
+    return parse_release(data, current_build())
 
 
 def install_problem(bundle: Path) -> str | None:
@@ -119,7 +163,7 @@ def install_problem(bundle: Path) -> str | None:
 
 def download(info: UpdateInfo, dest_dir: Path, timeout: int = 600) -> Path:
     zip_path = dest_dir / ASSET_NAME
-    _curl("-o", str(zip_path), info.url, timeout=timeout)
+    _fetch(info.url, timeout, dest=zip_path)
     if info.size and zip_path.stat().st_size != info.size:
         raise UpdateError("The update didn't download completely. Please try again.")
     if info.sha256:
@@ -204,4 +248,4 @@ def prepare_update(info: UpdateInfo) -> tuple[Path, Path, Path]:
 
 
 def describe_current() -> str:
-    return f"build {BUILD}" if BUILD else "development copy"
+    return f"build {current_build()}" if current_build() else "development copy"

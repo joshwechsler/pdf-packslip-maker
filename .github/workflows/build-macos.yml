@@ -99,7 +99,14 @@ jobs:
       - name: Self-test the in-app update install (unzip, verify, swap)
         run: |
           "dist/Packs Be Slippin'.app/Contents/MacOS/Packs Be Slippin'" --selftest-update Packs-Be-Slippin-mac.zip
-          "dist/Packs Be Slippin'.app/Contents/MacOS/Packs Be Slippin'" --check-update || true
+          APP="dist/Packs Be Slippin'.app/Contents/MacOS/Packs Be Slippin'"
+          # The update check must really reach GitHub (a failed check used to look like "up to date"):
+          # pretend to be build 1 and require it to find the newest published release,
+          # once with curl and once with the built-in Python fallback.
+          PACKSLIP_PRETEND_BUILD=1 "$APP" --check-update | tee check.txt
+          grep -q "newer release: build" check.txt
+          PACKSLIP_PRETEND_BUILD=1 PACKSLIP_UPDATE_NO_CURL=1 "$APP" --check-update | tee check2.txt
+          grep -q "newer release: build" check2.txt
 
       - uses: actions/upload-artifact@v4
         with:

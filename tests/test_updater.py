@@ -73,3 +73,25 @@ def test_swap_script_restores_old_app_if_new_one_is_missing(tmp_path):
 def test_check_is_skipped_outside_the_mac_app():
     assert updater.can_self_update() is False  # tests run from source, BUILD == 0
     assert updater.check_for_update() is None
+
+
+def test_manual_check_reports_connection_problems(monkeypatch):
+    import pytest
+    monkeypatch.setattr(updater, "can_self_update", lambda: True)
+
+    def boom(*a, **k):
+        raise updater.UpdateError("Couldn't reach the update server.\n\nDetails: curl: (6) Could not resolve host")
+    monkeypatch.setattr(updater, "_fetch", boom)
+    assert updater.check_for_update() is None                 # automatic check at launch stays quiet
+    with pytest.raises(updater.UpdateError, match="Could not resolve host"):
+        updater.check_for_update(raise_errors=True)           # "Check for Updates" shows the reason
+
+
+def test_pretend_build_finds_newer_release(monkeypatch):
+    import json
+    monkeypatch.setattr(updater, "can_self_update", lambda: True)
+    monkeypatch.setattr(updater, "_fetch", lambda *a, **k: json.dumps(_release(tag="build-12")).encode())
+    monkeypatch.setenv("PACKSLIP_PRETEND_BUILD", "11")
+    assert updater.check_for_update(raise_errors=True).build == 12
+    monkeypatch.setenv("PACKSLIP_PRETEND_BUILD", "12")
+    assert updater.check_for_update(raise_errors=True) is None

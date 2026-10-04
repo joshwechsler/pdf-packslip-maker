@@ -488,6 +488,11 @@ class App:
             return
 
         def done(info, error):
+            if error is not None:
+                if not quiet:
+                    msg = str(error) if isinstance(error, updater.UpdateError) else f"Couldn't check for updates: {error}"
+                    messagebox.showerror("Couldn't check for updates", msg, parent=self.root)
+                return
             if info is not None and quiet and self._busy_elsewhere():
                 self.root.after(30_000, lambda: self.check_updates(quiet=True))
                 return
@@ -498,7 +503,7 @@ class App:
                 return
             self._offer_update(info)
 
-        self._in_background(updater.check_for_update, done)
+        self._in_background(lambda: updater.check_for_update(raise_errors=not quiet), done)
 
     def _offer_update(self, info):
         designer = getattr(self, "_designer", None)
