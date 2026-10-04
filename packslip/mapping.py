@@ -109,6 +109,61 @@ def _qty_number(value: str) -> float | None:
         return None
 
 
+# One item inside an item-list cell: "Teriyaki Steak Tips (3x Regular)" or a modifier "Asparagus 1 cup (1x)".
+_ITEM_RE = re.compile(r"^(?P<name>.+?)\s*\((?P<qty>\d+(?:\.\d+)?)\s*x(?:\s+(?P<variant>[^()]*?))?\)\s*$", re.I)
+
+
+def _qty_text(q: str) -> str:
+    return q[:-2] if q.endswith(".0") else q
+
+
+def with_variant(name: str, variant: str, hidden: list[str]) -> str:
+    """Add "(Small)" etc. after an item name, unless hidden (Regular/Default) or already in the name."""
+    variant = (variant or "").strip()
+    if variant and variant.lower() not in {h.lower() for h in hidden} and variant.lower() not in name.lower():
+        return f"{name} ({variant})"
+    return name
+
+
+def parse_item_list(text: str, hidden_variants: list[str]) -> list[tuple[str, str, str]] | None:
+    """Parse a whole order written in one cell, e.g.
+
+        Custom Chicken (2x Default); Modifiers: Grilled Chicken Breast 4oz (1x); Broccoli 1 cup (1x);
+        Teriyaki Steak Tips (1x Regular); $10 delivery (1x Default);
+
+    -> [("Custom Chicken", "2", "Grilled Chicken Breast 4oz, Broccoli 1 cup"),
+        ("Teriyaki Steak Tips", "1", "")]
+
+    Items carry "(Nx Size)"; the parts after "Modifiers:" carry "(Nx)" and belong to the item
+    before them. Fee lines starting with "$" are skipped. Returns None if the cell isn't in
+    this format (so plain lists still work)."""
+    segments = [seg.strip() for seg in re.split(r"[;\n]", text or "") if seg.strip()]
+    if not segments or not any(_ITEM_RE.match(re.sub(r"(?i)^modifiers:\s*", "", seg)) for seg in segments):
+        return None
+    items: list[list] = []
+    in_modifiers = False
+    for seg in segments:
+        is_mod_start = bool(re.match(r"(?i)^modifiers:", seg))
+        if is_mod_start:
+            seg = re.sub(r"(?i)^modifiers:\s*", "", seg)
+            in_modifiers = True
+        m = _ITEM_RE.match(seg)
+        new_item = m is not None and not is_mod_start and (bool(m.group("variant")) or not in_modifiers)
+        if new_item:
+            in_modifiers = False
+            name = m.group("name").strip()
+            if name.startswith("$"):  # a fee, not something to pack
+                items.append(None)
+                continue
+            items.append([with_variant(name, m.group("variant") or "", hidden_variants),
+                          _qty_text(m.group("qty")), []])
+        elif items and items[-1] is not None:
+            items[-1][2].append(seg)
+        elif not items:
+            items.append([seg, "", []])
+    return [(n, q, clean_detail("; ".join(d))) for n, q, d in (i for i in items if i is not None)]
+
+
 def clean_detail(text: str) -> str:
     """'Grilled Salmon 4oz (1x); Asparagus 1 cup (2x); ' -> 'Grilled Salmon 4oz, Asparagus 1 cup (2x)'."""
     text = re.sub(r"<[^>]+>", " ", text or "")
@@ -211,20 +266,21 @@ class Mapping:
             return out
         if self.items_mode == "rows":
             name_col, qty_col = self.columns.get("items"), self.columns.get("quantity")
-            hidden = {v.lower() for v in self.hidden_variants}
             out = []
             for line in row.get(LINES_KEY, [row]):
                 name = (line.get(name_col, "") if name_col else "").strip()
                 qty = (line.get(qty_col, "") if qty_col else "").strip()
                 if not name or (_qty_number(qty) is not None and _qty_number(qty) <= 0):
                     continue
-                variant = (line.get(self.variant_col, "") if self.variant_col else "").strip()
-                if variant and variant.lower() not in hidden and variant.lower() not in name.lower():
-                    name = f"{name} ({variant})"
+                name = with_variant(name, line.get(self.variant_col, "") if self.variant_col else "",
+                                    self.hidden_variants)
                 detail = clean_detail(line.get(self.detail_col, "")) if self.detail_col else ""
                 out.append((name, qty, detail))
             return out
         names_col, qty_col = self.columns.get("items"), self.columns.get("quantity")
+        parsed = parse_item_list(row.get(names_col, "") if names_col else "", self.hidden_variants)
+        if parsed is not None:  # "Name (2x Regular); Name (1x Small); Modifiers: ..." in one cell
+            return parsed
         names = [n.strip() for n in (row.get(names_col, "") if names_col else "").split("\n") if n.strip()]
         qtys = [q.strip() for q in (row.get(qty_col, "") if qty_col else "").split("\n")]
         if len(names) == 1 and ("," in names[0] or ";" in names[0]) and not qty_col:

@@ -265,7 +265,7 @@ class App:
         if choice == 0:
             self.new_business_layout()
         elif choice == 1:
-            self.remap()
+            self.remap(fresh_guess=True)  # the old matches don't fit: start from new guesses
 
     def new_business_layout(self):
         name = ask_name(self.root, "New layout", "Name for this business's layout (e.g. the business name):")
@@ -292,14 +292,14 @@ class App:
             self.load_file(self.sheet.path, self.sheet_var.get())
 
     # ------------------------------------------------------ mapping/layout
-    def remap(self, first_time=False):
+    def remap(self, first_time=False, fresh_guess=False):
         if self.sheet is None:
             messagebox.showinfo("Load a spreadsheet first",
                                 "Load this week's spreadsheet first, so the app can show you its columns.",
                                 parent=self.root)
             return
         diagnostics.note(f"matching screen: opening (layout has matches: {bool(self.mapping)})")
-        dlg = MappingDialog(self.root, self.mapping, self.sheet)
+        dlg = MappingDialog(self.root, self.mapping, self.sheet, fresh_guess=fresh_guess)
         if dlg.winfo_exists():
             self.root.wait_window(dlg)
         diagnostics.note(f"matching screen: closed ({'saved' if dlg.result is not None else 'cancelled'})")

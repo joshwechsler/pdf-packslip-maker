@@ -20,14 +20,14 @@ NONE_LABEL = "(none)"
 class MappingDialog(tk.Toplevel):
     """Modal. After wait_window(), `.result` holds the saved Mapping or None."""
 
-    def __init__(self, master, mapping: Mapping | None, sheet: Sheet):
+    def __init__(self, master, mapping: Mapping | None, sheet: Sheet, fresh_guess: bool = False):
         super().__init__(master)
         self.title("Match Spreadsheet Columns")
         self.transient(master)
         self.minsize(800, 640)
         self.sheet = sheet
         self.result: Mapping | None = None
-        first_time = mapping is None or mapping.is_empty()
+        first_time = mapping is None or mapping.is_empty() or fresh_guess
         self.mapping = copy.deepcopy(mapping) if mapping else Mapping()
         if first_time:
             auto_map(self.mapping, sheet.headers, sheet.rows)

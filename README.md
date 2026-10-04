@@ -139,6 +139,20 @@ Driver Instructions, Delivery Zone, Delivery Window`). In this "rows" mode:
 - `.csv` files are read directly (UTF-8 or Windows encoding; leading zeros in ZIP codes kept).
 - If the file has a single **Fulfillment/Delivery Date**, the date picker pre-selects it.
 
+## Whole order in one cell
+
+Some exports put each customer's whole order in a single **Items** cell:
+
+`Custom Chicken (2x Default); Modifiers: Grilled Chicken Breast 4oz (1x); Broccoli 1 cup (1x); Teriyaki Steak Tips (1x Regular); $10 delivery (1x Default);`
+
+`parse_item_list` (in `mapping.py`) splits this at semicolons:
+- `Name (Nx Size)` starts an item.
+- Parts after `Modifiers:` (written `(Nx)`) attach to the item before them.
+- Sizes show unless Regular/Default/Standard.
+- Lines starting with `$` (fees) are skipped.
+
+This applies automatically when the item column is in that format. A plain list still works.
+
 ## Real spreadsheet format
 
 The weekly Google Sheet (downloaded as .xlsx) has **one row per customer** and **one column per
