@@ -8,7 +8,7 @@ from tkinter import messagebox, ttk
 
 from .mapping import DEFAULT_FIELDS, ITEM_KEYS, Mapping, auto_map, guess_columns
 from .spreadsheet import Sheet
-from .ui_common import ScrollFrame, center_on
+from .ui_common import ScrollFrame, center_on, dropdown
 
 NOT_USED_LABEL = "(not used)"
 START_LABEL = "(first column)"
@@ -85,12 +85,12 @@ class MappingDialog(tk.Toplevel):
         var = self.vars.setdefault(key, tk.StringVar())
         var.set(current if current in self.sheet.headers else NOT_USED_LABEL)
         ttk.Label(self.body, text=f["label"], width=20).grid(row=r, column=0, sticky="w", padx=4, pady=3)
-        combo = ttk.Combobox(self.body, textvariable=var, values=options, state="readonly", width=26)
-        combo.grid(row=r, column=1, sticky="w", padx=4, pady=3)
         example = ttk.Label(self.body, text=self._example(var.get()), width=32, foreground="#666666")
+        combo = dropdown(self.body, var, options, width=26,
+                         command=lambda: (example.configure(text=self._example(var.get())),
+                                          self._update_items_preview()))
+        combo.grid(row=r, column=1, sticky="w", padx=4, pady=3)
         example.grid(row=r, column=2, sticky="w", padx=4)
-        combo.bind("<<ComboboxSelected>>", lambda e: (example.configure(text=self._example(var.get())),
-                                                      self._update_items_preview()))
         if key not in BUILT_IN_KEYS:
             ttk.Button(self.body, text="Remove", width=7,
                        command=lambda k=key: self._remove_field(k)).grid(row=r, column=3, padx=4)
@@ -120,15 +120,12 @@ class MappingDialog(tk.Toplevel):
         ttk.Label(span, text="Menu items are the columns after").pack(side="left")
         self.after_var = tk.StringVar(value=self.mapping.items_after or START_LABEL)
         self.before_var = tk.StringVar(value=self.mapping.items_before or END_LABEL)
-        a = ttk.Combobox(span, textvariable=self.after_var, values=[START_LABEL] + self.sheet.headers,
-                         state="readonly", width=18)
-        a.pack(side="left", padx=4)
+        pick_columns = lambda: (self.mode.set("columns"), self._update_items_preview())  # noqa: E731
+        dropdown(span, self.after_var, [START_LABEL] + self.sheet.headers, pick_columns, width=18).pack(
+            side="left", padx=4)
         ttk.Label(span, text="and before").pack(side="left")
-        b = ttk.Combobox(span, textvariable=self.before_var, values=self.sheet.headers + [END_LABEL],
-                         state="readonly", width=18)
-        b.pack(side="left", padx=4)
-        for c in (a, b):
-            c.bind("<<ComboboxSelected>>", lambda e: (self.mode.set("columns"), self._update_items_preview()))
+        dropdown(span, self.before_var, self.sheet.headers + [END_LABEL], pick_columns, width=18).pack(
+            side="left", padx=4)
         r += 1
         self.items_preview = ttk.Label(self.body, text="", foreground="#1E7B34", wraplength=720)
         self.items_preview.grid(row=r, column=0, columnspan=4, sticky="w", padx=(24, 0), pady=(0, 6))
@@ -148,11 +145,10 @@ class MappingDialog(tk.Toplevel):
             line = ttk.Frame(self.body)
             line.grid(row=r, column=0, columnspan=4, sticky="w", padx=(24, 0), pady=2)
             ttk.Label(line, text=label, width=32).pack(side="left")
-            c = ttk.Combobox(line, textvariable=var, values=values, state="readonly", width=24)
-            c.pack(side="left", padx=4)
+            dropdown(line, var, values, width=24,
+                     command=lambda: (self.mode.set("rows"), self._update_items_preview())).pack(side="left", padx=4)
             if var is self.group_var:
                 ttk.Label(line, text="are one order").pack(side="left")
-            c.bind("<<ComboboxSelected>>", lambda e: (self.mode.set("rows"), self._update_items_preview()))
             r += 1
         self.rows_preview = ttk.Label(self.body, text="", foreground="#1E7B34", wraplength=720)
         self.rows_preview.grid(row=r, column=0, columnspan=4, sticky="w", padx=(24, 0), pady=(0, 6))

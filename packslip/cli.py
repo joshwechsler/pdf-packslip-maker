@@ -80,9 +80,31 @@ def _selftest_gui() -> int:
     d.update()
     d.dirty = False
     d.destroy()
+
+    # Matching screen with a one-row-per-item CSV: it must open, use menus (not comboboxes,
+    # which can lock up inside a modal window on macOS), and save.
+    from tkinter import ttk
+
+    from .mapping_dialog import MappingDialog
+    from .spreadsheet import load
+    csv_path = tmp / "orders.csv"
+    csv_path.write_text("Order,Customer,Product,Variant,Quantity,Full Address\n"
+                        "1,Pat,Salmon,Small,2,1 Main St\n1,Pat,Oats,Regular,1,1 Main St\n2,Lee,Bread,Default,1,2 Oak\n")
+    dlg = MappingDialog(root, None, load(csv_path))
+    dlg.update()
+
+    def widgets(w):
+        for c in w.winfo_children():
+            yield c
+            yield from widgets(c)
+    combos = [w for w in widgets(dlg) if isinstance(w, ttk.Combobox)]
+    menus = [w for w in widgets(dlg) if isinstance(w, ttk.Menubutton)]
+    dlg._save()
+    ok = not combos and len(menus) > 10 and dlg.result is not None and dlg.result.items_mode == "rows"
     root.destroy()
-    print(f"selftest-gui: OK (drag-and-drop {'available' if dnd else 'unavailable'})")
-    return 0
+    print(f"selftest-gui: {'OK' if ok else 'FAIL'} (drag-and-drop {'available' if dnd else 'unavailable'}; "
+          f"matching screen menus={len(menus)} comboboxes={len(combos)})")
+    return 0 if ok else 1
 
 
 def _selftest_update(zip_path: str) -> int:

@@ -119,6 +119,27 @@ class ColorSwatch(tk.Canvas):
             menu.grab_release()
 
 
+def dropdown(parent, var: tk.StringVar, values: list[str], command=None, width: int = 24):
+    """A pick-one button that opens a menu of `values`.
+
+    Used instead of ttk.Combobox in dialogs: on macOS a combobox's list can stop taking
+    clicks inside a modal window (the screen looks frozen), and scrolling over a combobox
+    silently changes its value. This uses a native menu, which has neither problem."""
+    from tkinter import ttk
+    mb = ttk.Menubutton(parent, textvariable=var, width=width, direction="below")
+    menu = tk.Menu(mb, tearoff=0)
+    for v in values:
+        menu.add_radiobutton(label=v, value=v, variable=var, command=command)
+    mb["menu"] = menu
+    return mb
+
+
+def disable_combobox_wheel(root) -> None:
+    """Stop the scroll wheel from changing combobox values by accident (app-wide)."""
+    for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>", "<Shift-MouseWheel>"):
+        root.bind_class("TCombobox", seq, lambda e: "break")
+
+
 class ScrollFrame(tk.Frame):
     """A vertically scrolling frame; put children in `.inner`."""
 
@@ -133,16 +154,24 @@ class ScrollFrame(tk.Frame):
         self.canvas.configure(yscrollcommand=self.vsb.set)
         self.canvas.pack(side="left", fill="both", expand=True)
         self.vsb.pack(side="right", fill="y")
+        # Scroll with the wheel/trackpad only while the pointer is over this frame. (A global
+        # binding that is never removed would pile up each time a dialog opens.)
+        self.bind("<Enter>", lambda e: self._wheel(True))
+        self.bind("<Leave>", lambda e: self._wheel(False))
+        self.bind("<Destroy>", lambda e: e.widget is self and self._wheel(False))
+
+    def _wheel(self, on: bool):
         for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
-            self.canvas.bind_all(seq, self._on_wheel, add="+")
+            try:
+                if on:
+                    self.bind_all(seq, self._on_wheel)
+                else:
+                    self.unbind_all(seq)
+            except tk.TclError:
+                pass
 
     def _on_wheel(self, event):
         if not self.winfo_exists():
-            return
-        w = self.winfo_containing(event.x_root, event.y_root)
-        while w is not None and w is not self:
-            w = getattr(w, "master", None)
-        if w is None:
             return
         if getattr(event, "num", None) == 4:
             delta = -1

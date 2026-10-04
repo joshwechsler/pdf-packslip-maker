@@ -20,7 +20,7 @@ from .mapping_dialog import MappingDialog
 from .datepicker import DatePicker, default_delivery_date, sheet_delivery_date
 from .pdfgen import GenerateError, check_ready, default_output_path, format_delivery_date, generate_pdf
 from .spreadsheet import Sheet, SpreadsheetError, load as load_sheet
-from .ui_common import IS_MAC, ask_choice, ask_name, center_on, open_path, reveal_path
+from .ui_common import IS_MAC, ask_choice, ask_name, center_on, disable_combobox_wheel, open_path, reveal_path
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -55,6 +55,7 @@ class App:
         root.title(APP_NAME)
         root.minsize(560, 520)
         root.report_callback_exception = self._unexpected_error
+        disable_combobox_wheel(root)
         self._build()
         self._refresh_templates()
         self._refresh_mapping_status()
@@ -487,6 +488,9 @@ class App:
             return
 
         def done(info, error):
+            if info is not None and quiet and self._busy_elsewhere():
+                self.root.after(30_000, lambda: self.check_updates(quiet=True))
+                return
             if info is None:
                 if not quiet:
                     messagebox.showinfo("Up to date", f"You have the latest version ({updater.describe_current()}).",
