@@ -13,8 +13,9 @@
 2. Open **Packs Be Slippin'**.
 3. **Drag the downloaded file** onto the big box (or click **Browse…** and pick it).
 4. Check the **Delivery date**. It remembers your usual delivery day, so normally it's already right. Use the dropdown or **Calendar…** to change it. This date prints on every slip.
-5. Click **Generate Pack Slips for (date)**.
-6. Click **Open PDF to Print**, then press **⌘P** to print. One page = one customer.
+5. Optional: click **Assign Drivers…**, select orders, pick a driver, **Assign**, **Save Drivers**. Regular customers are remembered. The PDF then starts with each driver's delivery list.
+6. Click **Generate Pack Slips for (date)**.
+7. Click **Open PDF to Print**, then press **⌘P** to print. One page = one customer.
 
 The PDF is saved in the **same folder as your spreadsheet**, named **Pack Slips – (spreadsheet name) – delivery (date).pdf**.
 

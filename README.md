@@ -153,6 +153,20 @@ Some exports put each customer's whole order in a single **Items** cell:
 
 This applies automatically when the item column is in that format. A plain list still works.
 
+## Drivers and the delivery list
+
+**Assign Drivers…** lists the week's delivery orders. Select orders, pick a driver, Assign.
+- Assignments are remembered per customer (name + address) and per layout in `drivers.json`.
+  Returning customers are pre-assigned the next week.
+- When any driver is assigned, the PDF starts with a landscape **delivery list**:
+  - One section per driver.
+  - Stops ordered by zip/town/street.
+  - Columns: tick box, stop #, customer, address + access code, phone, window/zone, items,
+    instructions.
+  - Then deliveries without a driver, then pickups grouped by location.
+- Pack slips follow in the same order and show **Driver: Mike · Stop 3** (`driver_stop` field).
+  Existing layouts gain this line once.
+
 ## Real spreadsheet format
 
 The weekly Google Sheet (downloaded as .xlsx) has **one row per customer** and **one column per

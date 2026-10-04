@@ -65,6 +65,8 @@ DEFAULT_FIELDS = [
 COMPUTED_FIELDS = [
     {"key": "item_count", "label": "Total Items", "sample": "6"},
     {"key": "delivery_date", "label": "Delivery Date", "sample": "Thu, Oct 2, 2026"},
+    {"key": "driver", "label": "Driver", "sample": "Mike"},
+    {"key": "driver_stop", "label": "Driver & Stop", "sample": "Mike · Stop 3"},
 ]
 COMPUTED_KEYS = {f["key"] for f in COMPUTED_FIELDS}
 

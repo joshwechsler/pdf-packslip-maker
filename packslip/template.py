@@ -124,6 +124,7 @@ class Template:
                 elements=[normalize_element(e) for e in data.get("elements") or []],
                 upgrades=list(data.get("upgrades") or []))
         _upgrade_pickup_and_access(t)
+        _upgrade_driver(t)
         return t
 
     def copy(self, name: str | None = None) -> "Template":
@@ -213,6 +214,16 @@ def _upgrade_pickup_and_access(t: "Template") -> None:
                                        size=10, color="#555555"))
 
 
+def _upgrade_driver(t: "Template") -> None:
+    """Add the "Driver: Mike · Stop 3" line once (prints only when drivers are assigned)."""
+    if "driver" in t.upgrades:
+        return
+    t.upgrades.append("driver")
+    if not any(e.get("field") in ("driver", "driver_stop") for e in t.elements if e["type"] == "field"):
+        t.elements.append(make_element("field", 316, 92, 260, 16, field="driver_stop", label="Driver:",
+                                       size=12, bold=True, align="right"))
+
+
 def default_template(name: str = "Standard") -> Template:
     """Starting layout, built around the weekly order sheet's columns."""
     E = make_element
@@ -223,6 +234,7 @@ def default_template(name: str = "Standard") -> Template:
         E("text", 316, 36, 260, 30, text="PACKING SLIP", size=24, bold=True, align="right", color=P),
         E("field", 316, 72, 260, 18, field="delivery_date", label="Delivery Date:", size=13, bold=True,
           align="right"),
+        E("field", 316, 92, 260, 16, field="driver_stop", label="Driver:", size=12, bold=True, align="right"),
         E("box", 36, 116, 540, 2, fill=A),
         E("text", 36, 132, 300, 14, text="CUSTOMER", size=9, bold=True, color=A),
         E("field", 36, 147, 360, 24, field="customer_name", size=18, bold=True),
@@ -246,7 +258,7 @@ def default_template(name: str = "Standard") -> Template:
         E("text", 36, 748, 540, 16, text="Thank you for your order!", size=10, italic=True,
           align="center", color="#777777"),
     ]
-    return Template(name=name, elements=els, upgrades=["pickup_access"])
+    return Template(name=name, elements=els, upgrades=["pickup_access", "driver"])
 
 
 # -- persistence -------------------------------------------------------------

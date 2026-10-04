@@ -12,6 +12,8 @@ from reportlab.pdfgen import canvas as rl_canvas
 
 from . import APP_NAME, storage
 from .layout import ascent, fit_text, inner_box, items_primitives, line_width, pdf_font
+from .delivery_list import draw_delivery_list
+from .drivers import make_plan
 from .mapping import ITEMS_KEY, Mapping
 from .spreadsheet import Sheet
 from .template import Template, element_text, resolve_color
@@ -169,8 +171,12 @@ def default_output_path(sheet_path: Path, delivery: dt.date | None = None) -> Pa
 
 
 def generate_pdf(out_path: str | Path, template: Template, mapping: Mapping, sheet: Sheet,
-                 progress: Callable[[int, int], None] | None = None, extra: dict | None = None) -> int:
-    """`extra` values (e.g. the chosen delivery date) are added to every page."""
+                 progress: Callable[[int, int], None] | None = None, extra: dict | None = None,
+                 drivers: dict[int, str] | None = None, driver_order: list[str] | None = None) -> int:
+    """`extra` values (e.g. the chosen delivery date) are added to every page.
+
+    `drivers` maps record index -> driver name. If any are assigned, the PDF starts with a
+    delivery list and the slips follow in route order, each showing its driver and stop."""
     check_ready(template, mapping, sheet)
     out_path = Path(out_path)
     w, h = template.page_size
@@ -182,13 +188,25 @@ def generate_pdf(out_path: str | Path, template: Template, mapping: Mapping, she
         c.setCreator(APP_NAME)
         records = mapping.records(sheet.rows)  # one per pack slip (orders grouped in rows mode)
         total = len(records)
-        for i, row in enumerate(records, 1):
+        all_values = []
+        for row in records:
             values = mapping.values_for_row(row)
             values.update(extra or {})
-            draw_page(c, template, values, mapping, images)
+            all_values.append(values)
+        order = list(range(total))
+        if drivers and any(drivers.values()):
+            plan = make_plan(all_values, drivers, driver_order or [])
+            draw_delivery_list(c, plan, all_values, (extra or {}).get("delivery_date", ""))
+            order = plan.order()
+            for i, (driver, stop) in plan.stop_of().items():
+                all_values[i]["driver"] = driver
+                all_values[i]["driver_stop"] = f"{driver} · Stop {stop}"
+        for n, i in enumerate(order, 1):
+            c.setPageSize((w, h))
+            draw_page(c, template, all_values[i], mapping, images)
             c.showPage()
             if progress:
-                progress(i, total)
+                progress(n, total)
         c.save()
         tmp.replace(out_path)
     except PermissionError:

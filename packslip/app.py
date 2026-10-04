@@ -15,6 +15,8 @@ from tkinter import filedialog, messagebox, ttk
 from . import APP_NAME, __version__, diagnostics, storage, updater
 from . import template as T
 from .designer import Designer
+from .drivers import DriverBook, customer_key, is_pickup
+from .drivers_dialog import DriversDialog
 from .mapping import Mapping, load_mapping, migrate_legacy_mapping, save_mapping
 from .mapping_dialog import MappingDialog
 from .datepicker import DatePicker, default_delivery_date, sheet_delivery_date
@@ -127,6 +129,11 @@ class App:
         self.map_status = ttk.Label(row2, text="", style="Muted.TLabel")
         self.map_status.pack(side="left")
         ttk.Button(row2, text="Remap Fields…", command=self.remap).pack(side="right")
+        row3 = ttk.Frame(outer)
+        row3.pack(fill="x", pady=(6, 0))
+        self.driver_status = ttk.Label(row3, text="", style="Muted.TLabel")
+        self.driver_status.pack(side="left")
+        ttk.Button(row3, text="Assign Drivers…", command=self.assign_drivers).pack(side="right")
 
         # Step 3 — generate
         ttk.Label(outer, text="3.  Pick the delivery date and make the PDF", style="Step.TLabel").pack(
@@ -212,6 +219,7 @@ class App:
         self._choose_layout_for(sheet)
         if self.mapping is not None and self.mapping.fill_new_fields(sheet.headers):
             save_mapping(self.mapping, self.tpl_var.get())  # match fields added in an app update
+        self._load_remembered_drivers()
         day = sheet_delivery_date(sheet)
         if day is not None:  # the file says when these go out: pre-select it
             self.date_picker.set(day)
@@ -334,6 +342,58 @@ class App:
         self._refresh_mapping_status()
         self._refresh_generate_state()
 
+    # ------------------------------------------------------------- drivers
+    def _all_values(self) -> list[dict]:
+        if self.sheet is None or self.mapping is None or self.mapping.is_empty():
+            return []
+        return [self.mapping.values_for_row(r) for r in self.mapping.records(self.sheet.rows)]
+
+    def _driver_assignment(self) -> dict[int, str]:
+        """Record index -> driver for the loaded sheet (stored by customer, so re-reading the file is safe)."""
+        by_key = getattr(self, "driver_by_key", {})
+        return {i: by_key[k] for i, v in enumerate(self._all_values()) if (k := customer_key(v)) in by_key}
+
+    def _load_remembered_drivers(self):
+        values = self._all_values()
+        book = DriverBook.load(self.tpl_var.get())
+        self.driver_by_key = {customer_key(values[i]): d for i, d in book.suggest(values).items()}
+        self._refresh_driver_status()
+
+    def _refresh_driver_status(self):
+        if not hasattr(self, "driver_status"):
+            return
+        values = self._all_values()
+        deliveries = sum(1 for v in values if not is_pickup(v))
+        if not deliveries:
+            self.driver_status.configure(text="Drivers: none yet (optional)")
+            return
+        n = len(self._driver_assignment())
+        if n:
+            drivers = len(set(self._driver_assignment().values()))
+            self.driver_status.configure(text=f"Drivers: {n} of {deliveries} deliveries assigned "
+                                              f"({drivers} driver{'s' if drivers != 1 else ''})")
+        else:
+            self.driver_status.configure(text=f"Drivers: none assigned yet (optional)")
+
+    def assign_drivers(self):
+        values = self._all_values()
+        if not values:
+            messagebox.showinfo("Load a spreadsheet first",
+                                "Load this week's spreadsheet (and match its columns) first.", parent=self.root)
+            return
+        book = DriverBook.load(self.tpl_var.get())
+        diagnostics.note("drivers: opening")
+        dlg = DriversDialog(self.root, book, values, self._driver_assignment())
+        if dlg.winfo_exists():
+            self.root.wait_window(dlg)
+        diagnostics.note(f"drivers: closed ({'saved' if dlg.result is not None else 'cancelled'})")
+        if dlg.result is None:
+            return
+        book.remember(values, dlg.result)
+        book.save()
+        self.driver_by_key = {customer_key(values[i]): d for i, d in dlg.result.items() if d}
+        self._refresh_driver_status()
+
     def _refresh_mapping_status(self):
         self._refresh_file_status()  # the slip count depends on the matches (grouped orders)
         if self.mapping is None or self.mapping.is_empty():
@@ -349,6 +409,7 @@ class App:
             else:
                 text += " + menu-item columns"
         self.map_status.configure(text=text)
+        self._refresh_driver_status()
 
     def _refresh_templates(self, select: str | None = None):
         names = T.ensure_default_template()
@@ -380,6 +441,7 @@ class App:
         self._refresh_mapping_status()
         if changed:
             self.date_picker.set(default_delivery_date(self._usual_weekday(name)))
+            self._load_remembered_drivers()
 
     def _current_template(self) -> T.Template:
         return T.load_template(self.tpl_var.get()) or T.default_template(self.tpl_var.get() or "Standard")
@@ -445,7 +507,8 @@ class App:
 
         try:
             pages = generate_pdf(out, tpl, self.mapping, self.sheet, progress=progress,
-                                 extra=self.delivery_values())
+                                 extra=self.delivery_values(), drivers=self._driver_assignment(),
+                                 driver_order=DriverBook.load(self.tpl_var.get()).names)
         except GenerateError as e:
             messagebox.showerror("Couldn't make the PDF", str(e), parent=self.root)
             self.status.configure(text="")
@@ -609,7 +672,7 @@ def run_gui(initial_file: str | None = None) -> None:
     root, dnd = make_root()
     app = App(root, dnd)
     root.update_idletasks()
-    w, h = 640, 660
+    w, h = 640, 700
     x = max((root.winfo_screenwidth() - w) // 2, 0)
     y = max((root.winfo_screenheight() - h) // 3, 0)
     root.geometry(f"{w}x{h}+{x}+{y}")
