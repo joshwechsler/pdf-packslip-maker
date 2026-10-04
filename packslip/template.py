@@ -87,6 +87,7 @@ class Template:
     page: str = DEFAULT_PAGE
     brand: dict = field(default_factory=lambda: dict(DEFAULT_BRAND))
     elements: list[dict] = field(default_factory=list)
+    upgrades: list[str] = field(default_factory=list)  # one-time layout upgrades already applied
 
     @property
     def page_size(self) -> tuple[float, float]:
@@ -110,7 +111,7 @@ class Template:
 
     def to_json(self) -> dict:
         return {"version": 1, "name": self.name, "page": self.page, "brand": self.brand,
-                "elements": self.elements}
+                "elements": self.elements, "upgrades": self.upgrades}
 
     @classmethod
     def from_json(cls, data: dict) -> "Template":
@@ -119,8 +120,11 @@ class Template:
         if {k: str(v).upper() for k, v in saved.items()} != _OLD_PLACEHOLDER_BRAND:
             brand.update(saved)
         page = data.get("page") if data.get("page") in PAGE_SIZES else DEFAULT_PAGE
-        return cls(name=data.get("name") or "Untitled", page=page, brand=brand,
-                   elements=[normalize_element(e) for e in data.get("elements") or []])
+        t = cls(name=data.get("name") or "Untitled", page=page, brand=brand,
+                elements=[normalize_element(e) for e in data.get("elements") or []],
+                upgrades=list(data.get("upgrades") or []))
+        _upgrade_pickup_and_access(t)
+        return t
 
     def copy(self, name: str | None = None) -> "Template":
         t = Template.from_json(copy.deepcopy(self.to_json()))
@@ -192,6 +196,23 @@ def install_default_logo() -> str:
     return DEFAULT_LOGO if dest.exists() else ""
 
 
+def _upgrade_pickup_and_access(t: "Template") -> None:
+    """Layouts made for delivery/pickup orders (they show the Delivery / Pickup field) get the
+    pickup-time and gate/access-code lines added once. Deleting them later is respected."""
+    if "pickup_access" in t.upgrades:
+        return
+    t.upgrades.append("pickup_access")
+    keys = {e.get("field") for e in t.elements if e["type"] == "field"}
+    if "fulfillment" not in keys:
+        return
+    if "pickup_time" not in keys:
+        t.elements.append(make_element("field", 400, 184, 176, 16, field="pickup_time", label="Pickup time:",
+                                       size=11, align="right"))
+    if "access_code" not in keys:
+        t.elements.append(make_element("field", 36, 226, 360, 16, field="access_code", label="Access:",
+                                       size=10, color="#555555"))
+
+
 def default_template(name: str = "Standard") -> Template:
     """Starting layout, built around the weekly order sheet's columns."""
     E = make_element
@@ -211,7 +232,10 @@ def default_template(name: str = "Standard") -> Template:
         E("field", 400, 147, 176, 18, field="fulfillment", size=12, bold=True, align="right"),
         E("field", 400, 167, 176, 16, field="pickup_location", label="Pickup at:", size=11, align="right"),
         E("field", 400, 184, 176, 16, field="time_window", label="Window:", size=11, align="right"),
+        # Pickup time and delivery window never both apply, so they share a line.
+        E("field", 400, 184, 176, 16, field="pickup_time", label="Pickup time:", size=11, align="right"),
         E("field", 400, 201, 176, 16, field="zone", label="Zone:", size=11, align="right", color="#555555"),
+        E("field", 36, 226, 360, 16, field="access_code", label="Access:", size=10, color="#555555"),
         E("box", 36, 244, 540, 26, fill=P),
         E("text", 46, 252, 300, 14, text="ITEMS", size=10, bold=True, color="#FFFFFF"),
         E("text", 306, 252, 260, 14, text="Total items: {Total Items}", size=10, bold=True,
@@ -222,7 +246,7 @@ def default_template(name: str = "Standard") -> Template:
         E("text", 36, 748, 540, 16, text="Thank you for your order!", size=10, italic=True,
           align="center", color="#777777"),
     ]
-    return Template(name=name, elements=els)
+    return Template(name=name, elements=els, upgrades=["pickup_access"])
 
 
 # -- persistence -------------------------------------------------------------

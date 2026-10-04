@@ -41,6 +41,10 @@ DEFAULT_FIELDS = [
      "aliases": ["pickup location", "=location", "store", "pickup at"]},
     {"key": "time_window", "label": "Delivery Window", "sample": "12PM to 5PM",
      "aliases": ["delivery window", "time window", "fulfillment time", "time slot", "window"]},
+    {"key": "pickup_time", "label": "Pickup Time", "sample": "4:30 PM",
+     "aliases": ["pickup time", "=fulfillment time"]},
+    {"key": "access_code", "label": "Gate / Access Code", "sample": "",
+     "aliases": ["building address code", "gate code", "access code", "door code", "address accessibility"]},
     {"key": "zone", "label": "Route / Zone", "sample": "Sunday 2",
      "aliases": ["delivery zone", "route", "zone"]},
     {"key": "company", "label": "Business Name", "sample": "",
@@ -299,7 +303,7 @@ class Mapping:
             vals["fulfillment"] = split_camel(vals["fulfillment"])
             # A store "location" on a delivery order is where it ships from, not a pickup spot.
             if re.search(r"deliver|ship", vals["fulfillment"], re.I):
-                vals["pickup_location"] = ""
+                vals["pickup_location"] = vals["pickup_time"] = ""
         items = self.item_rows(row)
         vals[ITEMS_KEY] = items
         if self.items_mode in ("columns", "rows"):
@@ -363,6 +367,18 @@ class Mapping:
             score += sum(1 for k in ITEM_KEYS if self.columns.get(k) in present)
         return score
 
+    def fill_new_fields(self, headers: list[str]) -> bool:
+        """Guess columns for fields that were never matched (e.g. added in an app update).
+        Fields the user set to "(not used)" are left alone. Returns True if anything changed."""
+        new = [f for f in self.fields if f["key"] not in self.columns and f["key"] not in ITEM_KEYS]
+        if not new:
+            return False
+        taken = {v for v in self.columns.values() if v} | {self.group_by, self.variant_col, self.detail_col}
+        guesses = guess_columns(new, [h for h in headers if h not in taken])
+        for f in new:
+            self.columns[f["key"]] = guesses.get(f["key"], "")
+        return True
+
     def is_empty(self) -> bool:
         return self.items_mode != "columns" and not any(self.columns.values())
 
@@ -377,6 +393,8 @@ class Mapping:
     def from_json(cls, data: dict) -> "Mapping":
         fields = [f for f in (data.get("fields") or [dict(f) for f in DEFAULT_FIELDS])
                   if f.get("key") not in COMPUTED_KEYS]
+        known = {f.get("key") for f in fields}
+        fields += [dict(f) for f in DEFAULT_FIELDS if f["key"] not in known]  # fields added in later versions
         mode = data.get("items_mode") if data.get("items_mode") in ("columns", "single", "rows") else "single"
         hidden = data.get("hidden_variants")
         return cls(fields=fields, columns=dict(data.get("columns") or {}), items_mode=mode,

@@ -209,6 +209,8 @@ class App:
             self.sheet_combo.pack_forget()
         self.status.configure(text="")
         self._choose_layout_for(sheet)
+        if self.mapping is not None and self.mapping.fill_new_fields(sheet.headers):
+            save_mapping(self.mapping, self.tpl_var.get())  # match fields added in an app update
         day = sheet_delivery_date(sheet)
         if day is not None:  # the file says when these go out: pre-select it
             self.date_picker.set(day)
