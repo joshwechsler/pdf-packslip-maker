@@ -120,6 +120,7 @@ class App:
         self.tpl_combo.pack(side="left", padx=6)
         self.tpl_combo.bind("<<ComboboxSelected>>", lambda e: self._template_chosen())
         ttk.Button(row, text="Edit Layout…", command=self.edit_layout).pack(side="left")
+        ttk.Button(row, text="New Layout…", command=self.new_business_layout).pack(side="left", padx=6)
 
         row2 = ttk.Frame(outer)
         row2.pack(fill="x", pady=(6, 0))
@@ -244,6 +245,11 @@ class App:
         current = self.tpl_var.get()
         if self._fit(current, sheet) > 0:
             return
+        if self.mapping is None or self.mapping.is_empty():
+            # The selected layout has never been matched (e.g. just created): set it up for this
+            # spreadsheet rather than switching to another layout.
+            self.remap(first_time=True)
+            return
         scores = {n: self._fit(n, sheet) for n in T.list_templates() if n != current}
         best = max(scores, key=scores.get, default=None)
         if best is not None and scores[best] > 0:
@@ -270,24 +276,39 @@ class App:
             self.remap(fresh_guess=True)  # the old matches don't fit: start from new guesses
 
     def new_business_layout(self):
-        name = ask_name(self.root, "New layout", "Name for this business's layout (e.g. the business name):")
+        """A new layout = its own slip design + its own column matches (e.g. one per spreadsheet type)."""
+        name = ask_name(self.root, "New layout",
+                        "Each layout has its own slip design and remembers its own spreadsheet columns.\n"
+                        "Make one for each kind of spreadsheet (or business).\n\nName for the new layout:")
         if not name:
             return
         if name.lower() in {n.lower() for n in T.list_templates()}:
             messagebox.showwarning("Name taken", f"There's already a layout called “{name}”.", parent=self.root)
             return
+        current = self._current_template()
+        logo = next((e.get("image") for e in current.elements if e["type"] == "logo" and e.get("image")), "")
+        keep_logo = False
+        if logo:
+            choice = ask_choice(self.root, "Logo", f"Which logo should the “{name}” layout use?",
+                                [f"The same logo as “{current.name}”", "No logo yet (I'll add one in Edit Layout)"])
+            if choice is None:
+                return
+            keep_logo = choice == 0
         tpl = T.default_template(name)
-        for el in tpl.elements:  # a different business needs its own logo
+        tpl.brand = dict(current.brand)
+        for el in tpl.elements:
             if el["type"] == "logo":
-                el["image"] = ""
+                el["image"] = logo if keep_logo else ""
         T.save_template(tpl)
         self._refresh_templates(name)
+        if self.sheet is None:
+            self.status.configure(text=f"Layout “{name}” created. Load its spreadsheet to match the columns.",
+                                  style="Ok.TLabel")
+            return
         self.remap(first_time=True)
         if self.mapping is not None and not self.mapping.is_empty():
-            messagebox.showinfo("Layout created",
-                                f"The “{name}” layout is ready and remembers this spreadsheet's columns.\n\n"
-                                "Click “Edit Layout…” to add this business's logo and adjust the slip.",
-                                parent=self.root)
+            self.status.configure(text=f"Layout “{name}” is ready and remembers this spreadsheet's columns.",
+                                  style="Ok.TLabel")
 
     def _change_sheet(self):
         if self.sheet and self.sheet_var.get() != self.sheet.sheet_name:
@@ -316,18 +337,18 @@ class App:
     def _refresh_mapping_status(self):
         self._refresh_file_status()  # the slip count depends on the matches (grouped orders)
         if self.mapping is None or self.mapping.is_empty():
-            self.map_status.configure(text="Columns: not matched for this layout yet")
+            self.map_status.configure(text=f"Columns for “{self.tpl_var.get()}”: not matched yet")
             return
         n = sum(1 for v in self.mapping.columns.values() if v)
-        text = f"Columns: saved matches ({n} columns"
+        text = f"Columns for “{self.tpl_var.get()}”: {n} matched"
         if self.mapping.items_mode == "rows":
-            text += f"; items grouped by “{self.mapping.group_by}”"
+            text += f", grouped by “{self.mapping.group_by}”"
         if self.mapping.items_mode == "columns":
             if self.sheet is not None:
                 text += f" + {len(self.mapping.item_headers(self.sheet.headers))} menu items"
             else:
                 text += " + menu-item columns"
-        self.map_status.configure(text=text + ")")
+        self.map_status.configure(text=text)
 
     def _refresh_templates(self, select: str | None = None):
         names = T.ensure_default_template()
