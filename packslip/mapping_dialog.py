@@ -8,7 +8,7 @@ from tkinter import messagebox, ttk
 
 from .mapping import DEFAULT_FIELDS, ITEM_KEYS, Mapping, auto_map, guess_columns
 from .spreadsheet import Sheet
-from .ui_common import ScrollFrame, center_on, dropdown
+from .ui_common import ScrollFrame, center_on, dropdown, make_modal
 
 NOT_USED_LABEL = "(not used)"
 START_LABEL = "(first column)"
@@ -64,8 +64,7 @@ class MappingDialog(tk.Toplevel):
 
         self.bind("<Escape>", lambda e: self.destroy())
         center_on(self, master)
-        self.grab_set()
-        self.focus_set()
+        make_modal(self)
 
     # ---------------------------------------------------------------------
     def _example(self, header: str) -> str:

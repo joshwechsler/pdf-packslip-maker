@@ -12,7 +12,7 @@ import traceback
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import APP_NAME, __version__, storage, updater
+from . import APP_NAME, __version__, diagnostics, storage, updater
 from . import template as T
 from .designer import Designer
 from .mapping import Mapping, load_mapping, migrate_legacy_mapping, save_mapping
@@ -20,7 +20,8 @@ from .mapping_dialog import MappingDialog
 from .datepicker import DatePicker, default_delivery_date, sheet_delivery_date
 from .pdfgen import GenerateError, check_ready, default_output_path, format_delivery_date, generate_pdf
 from .spreadsheet import Sheet, SpreadsheetError, load as load_sheet
-from .ui_common import IS_MAC, ask_choice, ask_name, center_on, disable_combobox_wheel, open_path, reveal_path
+from .ui_common import (IS_MAC, ask_choice, ask_name, center_on, disable_combobox_wheel, make_modal, open_path,
+                        reveal_path)
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -147,6 +148,8 @@ class App:
                   font=("Helvetica", 10)).pack(side="right")
         ttk.Button(footer, text="Check for Updates", command=lambda: self.check_updates(quiet=False)).pack(
             side="right", padx=8)
+        ttk.Button(footer, text="Show Diagnostics", command=lambda: reveal_path(diagnostics.path())).pack(
+            side="left")
 
         if self.dnd:
             for w in (self.root, self.drop, inner, self.drop_label):
@@ -168,7 +171,10 @@ class App:
         self._drop_hover(False)
         paths = self.root.tk.splitlist(event.data)
         if paths:
-            self.load_file(paths[0])
+            # Let macOS finish the drag before opening any windows: showing a dialog from
+            # inside the drop callback can lock the app up.
+            diagnostics.note(f"file dropped ({Path(paths[0]).suffix})")
+            self.root.after(100, lambda p=paths[0]: self.load_file(p))
         return getattr(event, "action", "copy")
 
     def _open_documents(self, *paths):
@@ -185,6 +191,7 @@ class App:
 
     def load_file(self, path, sheet_name=None):
         path = Path(path)
+        diagnostics.note(f"load spreadsheet ({path.suffix})")
         try:
             sheet = load_sheet(path, sheet_name)
         except SpreadsheetError as e:
@@ -291,9 +298,11 @@ class App:
                                 "Load this week's spreadsheet first, so the app can show you its columns.",
                                 parent=self.root)
             return
+        diagnostics.note(f"matching screen: opening (layout has matches: {bool(self.mapping)})")
         dlg = MappingDialog(self.root, self.mapping, self.sheet)
         if dlg.winfo_exists():
             self.root.wait_window(dlg)
+        diagnostics.note(f"matching screen: closed ({'saved' if dlg.result is not None else 'cancelled'})")
         if dlg.result is not None:
             self.mapping = dlg.result
             save_mapping(self.mapping, self.tpl_var.get())
@@ -450,7 +459,7 @@ class App:
         win.bind("<Return>", lambda e: (open_path(out), win.destroy()))
         win.bind("<Escape>", lambda e: win.destroy())
         center_on(win, self.root)
-        win.grab_set()
+        make_modal(win)
         open_btn.focus_set()
 
     # ------------------------------------------------------------- updates
@@ -534,7 +543,7 @@ class App:
         bar.start(12)
         win.protocol("WM_DELETE_WINDOW", lambda: None)  # can't cancel mid-download
         center_on(win, self.root)
-        win.grab_set()
+        make_modal(win)
 
         def done(result, error):
             bar.stop()
@@ -584,6 +593,7 @@ def run_gui(initial_file: str | None = None) -> None:
     if initial_file:
         root.after(200, lambda: app.load_file(initial_file))
     root.lift()
-    root.after(300, lambda: root.attributes("-topmost", False))
-    root.attributes("-topmost", True)
+    diagnostics.start_watchdog(root)
+    root.lift()
+    root.focus_force()
     root.mainloop()

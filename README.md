@@ -39,6 +39,7 @@ Everything stays on the Operator's Mac (NFR-7):
     assets/             copied logo files
     settings.json       last folder / selected layout
     error-log.txt       only written if something unexpected happens
+    diagnostics.txt     breadcrumbs (screens/actions, no customer data) + stack dump if the UI hangs >10s
 ```
 
 PDFs are saved next to the spreadsheet as

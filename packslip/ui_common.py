@@ -128,8 +128,14 @@ def dropdown(parent, var: tk.StringVar, values: list[str], command=None, width: 
     from tkinter import ttk
     mb = ttk.Menubutton(parent, textvariable=var, width=width, direction="below")
     menu = tk.Menu(mb, tearoff=0)
+    def picked(v):
+        from . import diagnostics
+        diagnostics.note(f"menu choice: {v}")
+        if command:
+            command()
+
     for v in values:
-        menu.add_radiobutton(label=v, value=v, variable=var, command=command)
+        menu.add_radiobutton(label=v, value=v, variable=var, command=lambda v=v: picked(v))
     mb["menu"] = menu
     return mb
 
@@ -182,6 +188,22 @@ class ScrollFrame(tk.Frame):
         self.canvas.yview_scroll(delta, "units")
 
 
+def make_modal(win) -> None:
+    """Bring a dialog to the front and make it modal, only once it is really on screen.
+    (Grabbing input before macOS has shown the window can leave the app unclickable.)"""
+    from . import diagnostics
+    try:
+        win.update_idletasks()
+        win.deiconify()
+        win.lift()
+        win.wait_visibility()
+        win.grab_set()
+        win.focus_force()
+        diagnostics.note(f"dialog shown: {win.title()}")
+    except tk.TclError as e:
+        diagnostics.note(f"dialog modal setup failed ({win.title()}): {e}")
+
+
 def ask_choice(parent, title: str, message: str, choices: list[str]) -> int | None:
     """Modal question with one button per choice. Returns the chosen index, or None if closed."""
     from tkinter import ttk
@@ -198,6 +220,6 @@ def ask_choice(parent, title: str, message: str, choices: list[str]) -> int | No
             fill="x", pady=3)
     win.bind("<Escape>", lambda e: win.destroy())
     center_on(win, parent)
-    win.grab_set()
+    make_modal(win)
     parent.wait_window(win)
     return result[0]

@@ -115,7 +115,8 @@ class CalendarPopup(tk.Toplevel):
         x = master.winfo_rootx()
         y = master.winfo_rooty() + master.winfo_height() + 4
         self.geometry(f"+{x}+{y}")
-        self.grab_set()
+        from .ui_common import make_modal
+        make_modal(self)
 
     def _shift(self, delta):
         m = self.month - 1 + delta
