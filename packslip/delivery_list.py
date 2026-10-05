@@ -116,8 +116,9 @@ def draw_delivery_list(c, plan: Plan, all_values: list[dict], date_text: str) ->
         if towns:
             sub += "  ·  " + ", ".join(towns[:4]) + ("…" if len(towns) > 4 else "")
         t = _Table(c, title, sub, DELIVERY_COLUMNS)
+        stop_of = plan.stop_of()
         for n, i in enumerate(idx, 1):
-            t.row(all_values[i], n)
+            t.row(all_values[i], stop_of.get(i, (driver, n))[1])
         t.finish()
         pages += t.page_no
     for location, idx in plan.pickups:

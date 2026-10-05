@@ -167,6 +167,22 @@ This applies automatically when the item column is in that format. A plain list 
 - Pack slips follow in the same order and show **Driver: Mike · Stop 3** (`driver_stop` field).
   Existing layouts gain this line once.
 
+## Route file (combine two files)
+
+A separate route file (.csv/.xlsx) can assign each order to a driver/route, optionally with stop #.
+Load it with **Route File…**, or drag it in after the orders; it is recognised by having a
+driver/route column and no item columns.
+- Columns are guessed (Order #, Customer Name, Driver/Route, Stop) and confirmed on a small screen.
+  The screen previews how many orders matched and names the ones that didn't. The column choices
+  are remembered per layout (`drivers.json` → `route_columns`).
+- Matching (`routes.join_routes`):
+  - By normalised order number (`#05704919` = `5704919` = `5704919.0`).
+  - Route rows **without** an order number match by customer name, only if that name appears once.
+  - A row with an order number is never reused for another order by the same customer.
+- Route assignments override remembered drivers for the matched orders. The file's stop numbers
+  set the order and are printed as-is ("Route 1 - Mike · Stop 5"). Unmatched deliveries keep any
+  earlier driver or appear under "Deliveries without a driver".
+
 ## Real spreadsheet format
 
 The weekly Google Sheet (downloaded as .xlsx) has **one row per customer** and **one column per

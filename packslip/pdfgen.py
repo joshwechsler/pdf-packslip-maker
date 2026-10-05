@@ -172,7 +172,8 @@ def default_output_path(sheet_path: Path, delivery: dt.date | None = None) -> Pa
 
 def generate_pdf(out_path: str | Path, template: Template, mapping: Mapping, sheet: Sheet,
                  progress: Callable[[int, int], None] | None = None, extra: dict | None = None,
-                 drivers: dict[int, str] | None = None, driver_order: list[str] | None = None) -> int:
+                 drivers: dict[int, str] | None = None, driver_order: list[str] | None = None,
+                 stops: dict[int, int] | None = None) -> int:
     """`extra` values (e.g. the chosen delivery date) are added to every page.
 
     `drivers` maps record index -> driver name. If any are assigned, the PDF starts with a
@@ -195,7 +196,7 @@ def generate_pdf(out_path: str | Path, template: Template, mapping: Mapping, she
             all_values.append(values)
         order = list(range(total))
         if drivers and any(drivers.values()):
-            plan = make_plan(all_values, drivers, driver_order or [])
+            plan = make_plan(all_values, drivers, driver_order or [], stops)
             draw_delivery_list(c, plan, all_values, (extra or {}).get("delivery_date", ""))
             order = plan.order()
             for i, (driver, stop) in plan.stop_of().items():

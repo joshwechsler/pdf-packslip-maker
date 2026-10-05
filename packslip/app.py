@@ -17,6 +17,8 @@ from . import template as T
 from .designer import Designer
 from .drivers import DriverBook, customer_key, is_pickup
 from .drivers_dialog import DriversDialog
+from .route_dialog import RouteDialog
+from .routes import RouteColumns, guess_route_columns, join_routes, looks_like_route_file
 from .mapping import Mapping, load_mapping, migrate_legacy_mapping, save_mapping
 from .mapping_dialog import MappingDialog
 from .datepicker import DatePicker, default_delivery_date, sheet_delivery_date
@@ -134,6 +136,7 @@ class App:
         self.driver_status = ttk.Label(row3, text="", style="Muted.TLabel")
         self.driver_status.pack(side="left")
         ttk.Button(row3, text="Assign Drivers…", command=self.assign_drivers).pack(side="right")
+        ttk.Button(row3, text="Route File…", command=self.choose_route_file).pack(side="right", padx=6)
 
         # Step 3 — generate
         ttk.Label(outer, text="3.  Pick the delivery date and make the PDF", style="Step.TLabel").pack(
@@ -205,7 +208,19 @@ class App:
         except SpreadsheetError as e:
             messagebox.showerror("Can't read that spreadsheet", str(e), parent=self.root)
             return
+        if self.sheet is not None and self.mapping is not None and looks_like_route_file(sheet) and \
+                self._fit(self.tpl_var.get(), sheet) <= 0:
+            choice = ask_choice(self.root, "Route file?",
+                                f"“{path.name}” looks like a route file (it has a driver/route column but no "
+                                "items). Use it to assign drivers to the orders already loaded?",
+                                ["Yes, use it as the route file", "No, load it as this week's orders"])
+            if choice is None:
+                return
+            if choice == 0:
+                self.load_route_file(path, sheet)
+                return
         self.sheet = sheet
+        self.route_sheet = None  # a new orders file needs its route file loaded again
         self.settings["last_dir"] = str(path.parent)
         storage.save_settings(self.settings)
         self._refresh_file_status()
@@ -357,7 +372,56 @@ class App:
         values = self._all_values()
         book = DriverBook.load(self.tpl_var.get())
         self.driver_by_key = {customer_key(values[i]): d for i, d in book.suggest(values).items()}
+        self.stop_by_key = {}
+        if getattr(self, "route_sheet", None) is not None:
+            self._apply_routes()
         self._refresh_driver_status()
+
+    def _stop_assignment(self) -> dict[int, int]:
+        by_key = getattr(self, "stop_by_key", {})
+        return {i: by_key[k] for i, v in enumerate(self._all_values()) if (k := customer_key(v)) in by_key}
+
+    def choose_route_file(self):
+        if not self._all_values():
+            messagebox.showinfo("Load the orders first",
+                                "Load this week's orders spreadsheet first, then the route file.", parent=self.root)
+            return
+        path = filedialog.askopenfilename(
+            parent=self.root, title="Choose the route file", initialdir=self.settings.get("last_dir") or str(Path.home()),
+            filetypes=[("Spreadsheets", "*.xlsx *.xlsm *.csv"), ("All files", "*.*")])
+        if path:
+            try:
+                sheet = load_sheet(Path(path))
+            except SpreadsheetError as e:
+                messagebox.showerror("Can't read that file", str(e), parent=self.root)
+                return
+            self.load_route_file(Path(path), sheet)
+
+    def load_route_file(self, path: Path, sheet: Sheet):
+        """Match the route file's columns (pre-filled), then give each order its driver/route and stop."""
+        diagnostics.note(f"route file: {path.suffix}")
+        values = self._all_values()
+        book = DriverBook.load(self.tpl_var.get())
+        cols = RouteColumns.from_json(book.route_columns)
+        if not cols.fits(sheet.headers):
+            cols = guess_route_columns(sheet.headers)
+        dlg = RouteDialog(self.root, sheet, cols, values)
+        if dlg.winfo_exists():
+            self.root.wait_window(dlg)
+        if dlg.result is None:
+            return
+        book.route_columns = dlg.result.to_json()
+        book.save()
+        self.route_sheet, self.route_cols, self.route_name = sheet, dlg.result, path.name
+        self._apply_routes()
+        self._refresh_driver_status()
+
+    def _apply_routes(self):
+        values = self._all_values()
+        res = join_routes(self.route_sheet, self.route_cols, values)
+        for i, d in res.assignment.items():
+            self.driver_by_key[customer_key(values[i])] = d
+        self.stop_by_key = {customer_key(values[i]): n for i, n in res.stops.items()}
 
     def _refresh_driver_status(self):
         if not hasattr(self, "driver_status"):
@@ -368,6 +432,11 @@ class App:
             self.driver_status.configure(text="Drivers: none yet (optional)")
             return
         n = len(self._driver_assignment())
+        if getattr(self, "route_sheet", None) is not None:
+            drivers = len(set(self._driver_assignment().values()))
+            self.driver_status.configure(text=f"Routes: {n} of {len(values)} orders from “{self.route_name}” "
+                                              f"({drivers} route{'s' if drivers != 1 else ''})")
+            return
         if n:
             drivers = len(set(self._driver_assignment().values()))
             self.driver_status.configure(text=f"Drivers: {n} of {deliveries} deliveries assigned "
@@ -508,7 +577,8 @@ class App:
         try:
             pages = generate_pdf(out, tpl, self.mapping, self.sheet, progress=progress,
                                  extra=self.delivery_values(), drivers=self._driver_assignment(),
-                                 driver_order=DriverBook.load(self.tpl_var.get()).names)
+                                 driver_order=DriverBook.load(self.tpl_var.get()).names,
+                                 stops=self._stop_assignment())
         except GenerateError as e:
             messagebox.showerror("Couldn't make the PDF", str(e), parent=self.root)
             self.status.configure(text="")

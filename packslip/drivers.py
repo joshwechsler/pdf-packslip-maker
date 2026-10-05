@@ -45,6 +45,7 @@ class DriverBook:
     layout: str
     names: list[str] = field(default_factory=list)
     memory: dict[str, str] = field(default_factory=dict)  # customer_key -> driver
+    route_columns: dict = field(default_factory=dict)     # last route-file column matches
 
     # Stored in their own file (drivers.json), keyed by layout, so other settings writes can't clobber them.
     @staticmethod
@@ -54,11 +55,12 @@ class DriverBook:
     @classmethod
     def load(cls, layout: str) -> "DriverBook":
         data = (storage.read_json(cls._path(), {}) or {}).get(layout) or {}
-        return cls(layout=layout, names=list(data.get("names") or []), memory=dict(data.get("memory") or {}))
+        return cls(layout=layout, names=list(data.get("names") or []), memory=dict(data.get("memory") or {}),
+                   route_columns=dict(data.get("route_columns") or {}))
 
     def save(self) -> None:
         data = storage.read_json(self._path(), {}) or {}
-        data[self.layout] = {"names": self.names, "memory": self.memory}
+        data[self.layout] = {"names": self.names, "memory": self.memory, "route_columns": self.route_columns}
         storage.write_json(self._path(), data)
 
     def suggest(self, all_values: list[dict]) -> dict[int, str]:
@@ -92,28 +94,35 @@ class Plan:
     def order(self) -> list[int]:
         return [i for _, idx in self.routes for i in idx] + [i for _, idx in self.pickups for i in idx]
 
+    given_stops: dict[int, int] = field(default_factory=dict)   # stop numbers from a route file
+
     def stop_of(self) -> dict[int, tuple[str, int]]:
+        """Stop numbers: the route file's own number when it has one, else position in the route."""
         out = {}
         for driver, idx in self.routes:
             if driver == UNASSIGNED:
                 continue
             for n, i in enumerate(idx, 1):
-                out[i] = (driver, n)
+                out[i] = (driver, self.given_stops.get(i, n))
         return out
 
 
-def make_plan(all_values: list[dict], assignment: dict[int, str], driver_order: list[str]) -> Plan:
+def make_plan(all_values: list[dict], assignment: dict[int, str], driver_order: list[str],
+              stops: dict[int, int] | None = None) -> Plan:
+    """`stops` (record index -> stop number, e.g. from a route file) fixes the order within a
+    route; orders without one follow, in rough geographic order."""
+    stops = stops or {}
     groups: dict[str, list[int]] = {}
     pickups: dict[str, list[int]] = {}
     for i, v in enumerate(all_values):
-        if is_pickup(v):
+        if is_pickup(v) and not assignment.get(i):  # a pickup put on a route stays on the route
             pickups.setdefault(v.get("pickup_location") or "Pickup", []).append(i)
         else:
             groups.setdefault(assignment.get(i) or UNASSIGNED, []).append(i)
 
-    def stop_key(i):  # rough geographic order: by zip, then town, then street
+    def stop_key(i):  # given stop number first, then rough geographic order: zip, town, street
         a = all_values[i].get("address", "")
-        return (_zip(a), town(a).lower(), a.lower())
+        return (stops.get(i, 10**9), _zip(a), town(a).lower(), a.lower())
 
     rank = {d: n for n, d in enumerate(driver_order)}
     drivers = sorted((d for d in groups if d != UNASSIGNED), key=lambda d: (rank.get(d, len(rank)), d.lower()))
@@ -122,4 +131,4 @@ def make_plan(all_values: list[dict], assignment: dict[int, str], driver_order: 
         routes.append((UNASSIGNED, sorted(groups[UNASSIGNED], key=stop_key)))
     pickup_list = [(loc, sorted(idx, key=lambda i: all_values[i].get("customer_name", "").lower()))
                    for loc, idx in sorted(pickups.items(), key=lambda kv: kv[0].lower())]
-    return Plan(routes=routes, pickups=pickup_list)
+    return Plan(routes=routes, pickups=pickup_list, given_stops=dict(stops))
