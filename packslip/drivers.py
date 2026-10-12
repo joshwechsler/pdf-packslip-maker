@@ -1,10 +1,8 @@
-"""Driver assignment and the delivery list.
+"""Drivers and the delivery list.
 
-The Operator assigns a driver to each delivery order (Assign Drivers…). Assignments are
-remembered per customer, per layout, so returning customers are pre-assigned next week.
-When drivers are assigned, the PDF starts with a delivery list (one section per driver,
-stops in order) and the pack slips follow in the same order, each showing
-"Driver: Mike · Stop 3".
+Drivers come from a separate driver list file (see routes.py). When it is loaded, the PDF
+starts with a delivery list (one section per driver, stops in order) and the pack slips
+follow in the same order, each showing "Driver: Mike" (plus "· Stop 3" if the file has stops).
 """
 
 from __future__ import annotations
@@ -41,11 +39,9 @@ def town(address: str) -> str:
 
 @dataclass
 class DriverBook:
-    """Driver names and remembered assignments for one layout."""
+    """Per-layout driver settings: the driver list's column matches, reused each week."""
     layout: str
-    names: list[str] = field(default_factory=list)
-    memory: dict[str, str] = field(default_factory=dict)  # customer_key -> driver
-    route_columns: dict = field(default_factory=dict)     # last route-file column matches
+    route_columns: dict = field(default_factory=dict)
 
     # Stored in their own file (drivers.json), keyed by layout, so other settings writes can't clobber them.
     @staticmethod
@@ -55,34 +51,12 @@ class DriverBook:
     @classmethod
     def load(cls, layout: str) -> "DriverBook":
         data = (storage.read_json(cls._path(), {}) or {}).get(layout) or {}
-        return cls(layout=layout, names=list(data.get("names") or []), memory=dict(data.get("memory") or {}),
-                   route_columns=dict(data.get("route_columns") or {}))
+        return cls(layout=layout, route_columns=dict(data.get("route_columns") or {}))
 
     def save(self) -> None:
         data = storage.read_json(self._path(), {}) or {}
-        data[self.layout] = {"names": self.names, "memory": self.memory, "route_columns": self.route_columns}
+        data[self.layout] = {"route_columns": self.route_columns}
         storage.write_json(self._path(), data)
-
-    def suggest(self, all_values: list[dict]) -> dict[int, str]:
-        """Pre-assign deliveries to the driver they had before."""
-        out = {}
-        for i, v in enumerate(all_values):
-            d = self.memory.get(customer_key(v))
-            if d and not is_pickup(v):
-                out[i] = d
-        return out
-
-    def remember(self, all_values: list[dict], assignment: dict[int, str]) -> None:
-        for i, v in enumerate(all_values):
-            if is_pickup(v):
-                continue
-            key = customer_key(v)
-            if assignment.get(i):
-                self.memory[key] = assignment[i]
-                if assignment[i] not in self.names:
-                    self.names.append(assignment[i])
-            else:
-                self.memory.pop(key, None)
 
 
 @dataclass

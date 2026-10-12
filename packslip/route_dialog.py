@@ -1,4 +1,4 @@
-"""Match a route file's columns and preview how many orders it covers."""
+"""Match a driver list's columns and preview how many orders it covers."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ class RouteDialog(tk.Toplevel):
 
     def __init__(self, master, route_sheet: Sheet, cols: RouteColumns, all_values: list[dict]):
         super().__init__(master)
-        self.title("Route File")
+        self.title("Driver List")
         self.transient(master)
         self.minsize(640, 360)
         self.sheet, self.values = route_sheet, all_values
@@ -36,7 +36,7 @@ class RouteDialog(tk.Toplevel):
         options = [NONE] + route_sheet.headers
         self.vars = {}
         for r, (key, label) in enumerate((("order", "Order number"), ("customer", "Customer name"),
-                                          ("driver", "Driver / Route"), ("stop", "Stop # (optional)"))):
+                                          ("driver", "Driver name"), ("stop", "Stop # (optional)"))):
             var = tk.StringVar(value=getattr(cols, key) or NONE)
             self.vars[key] = var
             ttk.Label(grid, text=label, width=18).grid(row=r, column=0, sticky="w", pady=4)
@@ -45,7 +45,7 @@ class RouteDialog(tk.Toplevel):
         self.preview.pack(anchor="w", pady=(14, 0))
         btns = ttk.Frame(f)
         btns.pack(side="bottom", fill="x", pady=(16, 0))
-        self.ok = ttk.Button(btns, text="Use Route File", command=self._save, default="active")
+        self.ok = ttk.Button(btns, text="Use Driver List", command=self._save, default="active")
         self.ok.pack(side="right")
         ttk.Button(btns, text="Cancel", command=self.destroy).pack(side="right", padx=8)
         self.bind("<Escape>", lambda e: self.destroy())
@@ -59,7 +59,7 @@ class RouteDialog(tk.Toplevel):
     def _preview(self):
         cols = self._cols()
         if not cols.usable():
-            self.preview.configure(text="Choose the Driver / Route column, and an Order number or Customer "
+            self.preview.configure(text="Choose the Driver name column, and an Order number or Customer "
                                         "name column.", foreground="#B00020")
             self.ok.state(["disabled"])
             return
@@ -69,7 +69,7 @@ class RouteDialog(tk.Toplevel):
         missing = [i for i in res.unmatched if i in set(deliveries)]
         routes = len(set(res.assignment.values()))
         text = (f"✓ {len(res.assignment)} of {len(self.values)} orders matched to {routes} "
-                f"driver{'s' if routes != 1 else ''}/route{'s' if routes != 1 else ''}")
+                f"driver{'s' if routes != 1 else ''}")
         if res.by_name:
             text += f" ({res.by_name} by customer name)"
         text += "."
@@ -78,9 +78,8 @@ class RouteDialog(tk.Toplevel):
         if missing:
             names = ", ".join(self.values[i].get("customer_name", "?") for i in missing[:8])
             more = f" and {len(missing) - 8} more" if len(missing) > 8 else ""
-            text += (f"\n\n{len(missing)} deliver{'ies' if len(missing) != 1 else 'y'} not in the route file: "
-                     f"{names}{more}. They stay with any driver you assigned before, or can be assigned "
-                     "with “Assign Drivers…”.")
+            text += (f"\n\n{len(missing)} deliver{'ies' if len(missing) != 1 else 'y'} not in the driver list: "
+                     f"{names}{more}. Their slips print without a driver.")
         self.preview.configure(text=text, foreground="#1E7B34" if not missing else "#8A5A00")
 
     def _save(self):

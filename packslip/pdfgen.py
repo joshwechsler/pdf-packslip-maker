@@ -176,8 +176,8 @@ def generate_pdf(out_path: str | Path, template: Template, mapping: Mapping, she
                  stops: dict[int, int] | None = None) -> int:
     """`extra` values (e.g. the chosen delivery date) are added to every page.
 
-    `drivers` maps record index -> driver name. If any are assigned, the PDF starts with a
-    delivery list and the slips follow in route order, each showing its driver and stop."""
+    `drivers` maps record index -> driver name (from the driver list file). If any are set, the PDF
+    starts with a delivery list and the slips follow in route order, each showing its driver."""
     check_ready(template, mapping, sheet)
     out_path = Path(out_path)
     w, h = template.page_size
@@ -201,7 +201,8 @@ def generate_pdf(out_path: str | Path, template: Template, mapping: Mapping, she
             order = plan.order()
             for i, (driver, stop) in plan.stop_of().items():
                 all_values[i]["driver"] = driver
-                all_values[i]["driver_stop"] = f"{driver} · Stop {stop}"
+                # "Mike · Stop 5" when the driver list has stop numbers, otherwise just "Mike"
+                all_values[i]["driver_stop"] = f"{driver} · Stop {stop}" if i in plan.given_stops else driver
         for n, i in enumerate(order, 1):
             c.setPageSize((w, h))
             draw_page(c, template, all_values[i], mapping, images)

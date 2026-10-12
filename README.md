@@ -153,35 +153,30 @@ Some exports put each customer's whole order in a single **Items** cell:
 
 This applies automatically when the item column is in that format. A plain list still works.
 
-## Drivers and the delivery list
+## Drivers (driver list file)
 
-**Assign Drivers…** lists the week's delivery orders. Select orders, pick a driver, Assign.
-- Assignments are remembered per customer (name + address) and per layout in `drivers.json`.
-  Returning customers are pre-assigned the next week.
-- When any driver is assigned, the PDF starts with a landscape **delivery list**:
-  - One section per driver.
-  - Stops ordered by zip/town/street.
-  - Columns: tick box, stop #, customer, address + access code, phone, window/zone, items,
-    instructions.
-  - Then deliveries without a driver, then pickups grouped by location.
-- Pack slips follow in the same order and show **Driver: Mike · Stop 3** (`driver_stop` field).
-  Existing layouts gain this line once.
+Drivers aren't assigned in the app. They come from a separate **driver list** (.csv/.xlsx) with at least
+a driver name and an order number or customer name (other columns are ignored).
 
-## Route file (combine two files)
+1. Load the week's orders.
+2. Click **Driver List…**, or drag the file in after the orders. It is recognised by having a driver
+   column and no item columns.
+3. Check the columns on the small screen (Order number, Customer name, Driver name, optional Stop #).
+   It previews how many orders matched and names the ones that didn't. The choices are remembered
+   per layout (`drivers.json` → `route_columns`).
 
-A separate route file (.csv/.xlsx) can assign each order to a driver/route, optionally with stop #.
-Load it with **Route File…**, or drag it in after the orders; it is recognised by having a
-driver/route column and no item columns.
-- Columns are guessed (Order #, Customer Name, Driver/Route, Stop) and confirmed on a small screen.
-  The screen previews how many orders matched and names the ones that didn't. The column choices
-  are remembered per layout (`drivers.json` → `route_columns`).
-- Matching (`routes.join_routes`):
-  - By normalised order number (`#05704919` = `5704919` = `5704919.0`).
-  - Route rows **without** an order number match by customer name, only if that name appears once.
-  - A row with an order number is never reused for another order by the same customer.
-- Route assignments override remembered drivers for the matched orders. The file's stop numbers
-  set the order and are printed as-is ("Route 1 - Mike · Stop 5"). Unmatched deliveries keep any
-  earlier driver or appear under "Deliveries without a driver".
+Matching (`routes.join_routes`):
+- By normalised order number (`#05704919` = `5704919` = `5704919.0`).
+- Rows **without** an order number match by customer name, only if that name appears once.
+- A row with an order number is never reused for another order by the same customer.
+
+Then:
+- Each pack slip shows **Driver: Mike** (`driver_stop` field), or **Driver: Mike · Stop 5** when the
+  file has stop numbers. Orders not in the list print without a driver.
+- The PDF starts with a landscape **delivery list**: one section per driver (stops in the file's
+  order, else by zip/town/street), then deliveries without a driver, then pickups by location.
+  The slips follow in the same order.
+- The driver list is per week: loading a new orders file clears it.
 
 ## Real spreadsheet format
 

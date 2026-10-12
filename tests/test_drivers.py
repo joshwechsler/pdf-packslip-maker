@@ -1,7 +1,7 @@
 from pypdf import PdfReader
 
 from packslip import template as T
-from packslip.drivers import UNASSIGNED, DriverBook, customer_key, make_plan, town
+from packslip.drivers import UNASSIGNED, DriverBook, make_plan, town
 from packslip.mapping import Mapping, auto_map
 from packslip.pdfgen import generate_pdf
 from packslip.spreadsheet import load
@@ -37,16 +37,11 @@ def test_plan_orders_stops_and_separates_pickups(tmp_path):
     assert plan.order() == [1, 0, 3, 2]
 
 
-def test_book_remembers_customers_week_to_week(tmp_path):
-    _, _, vals = _setup(tmp_path)
+def test_book_keeps_driver_list_columns(tmp_path):
     book = DriverBook.load("Fulfillment")
-    book.remember(vals, {0: "Mike", 3: "Sara"})
+    book.route_columns = {"order": "Order #", "driver": "Driver"}
     book.save()
-    again = DriverBook.load("Fulfillment")
-    assert again.names == ["Mike", "Sara"]
-    assert again.suggest(vals) == {0: "Mike", 3: "Sara"}
-    again.remember(vals, {0: "Mike"})                     # Dan unassigned this week -> forgotten
-    assert customer_key(vals[3]) not in again.memory
+    assert DriverBook.load("Fulfillment").route_columns == {"order": "Order #", "driver": "Driver"}
 
 
 def test_pdf_starts_with_delivery_list_and_slips_show_driver(tmp_path):
@@ -58,9 +53,9 @@ def test_pdf_starts_with_delivery_list_and_slips_show_driver(tmp_path):
     assert n == 4 and len(pages) == 3 + 4                  # Mike, Sara, Gym East pickups + 4 slips
     assert pages[0].startswith("Driver: Mike") and "2 stops" in pages[0] and "Side door" in pages[0]
     assert pages[1].startswith("Driver: Sara") and pages[2].startswith("Pickups: Gym East")
-    assert "Bob" in pages[3] and "Driver: Mike · Stop 1" in pages[3]
-    assert "Ann" in pages[4] and "Driver: Mike · Stop 2" in pages[4]
-    assert "Dan" in pages[5] and "Driver: Sara · Stop 1" in pages[5]
+    assert "Bob" in pages[3] and "Driver: Mike" in pages[3] and "Stop" not in pages[3]   # no stops in the file
+    assert "Ann" in pages[4] and "Driver: Mike" in pages[4]
+    assert "Dan" in pages[5] and "Driver: Sara" in pages[5]
     assert "Cat" in pages[6] and "Driver:" not in pages[6]
 
 
@@ -69,3 +64,13 @@ def test_no_drivers_means_no_list(tmp_path):
     out = tmp_path / "n.pdf"
     generate_pdf(out, T.default_template("F"), m, sheet)
     assert len(PdfReader(out).pages) == 4
+
+
+def test_slip_shows_stop_only_when_the_driver_list_has_one(tmp_path):
+    sheet, m, _ = _setup(tmp_path)
+    out = tmp_path / "s.pdf"
+    generate_pdf(out, T.default_template("F"), m, sheet, drivers={0: "Mike", 1: "Mike"}, stops={0: 5})
+    slips = [p.extract_text() for p in PdfReader(out).pages][-4:]
+    ann = next(t for t in slips if "Ann" in t)
+    bob = next(t for t in slips if "Bob" in t)
+    assert "Driver: Mike · Stop 5" in ann and "Stop" not in bob
