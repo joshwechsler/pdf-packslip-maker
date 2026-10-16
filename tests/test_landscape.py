@@ -23,7 +23,7 @@ def test_landscape_layout_installed_once_with_current_matches():
     T.save_template(T.default_template())
     assert T.ensure_default_template() == ["Landscape", "Standard"]
     assert load_mapping("Landscape").columns == {"customer_name": "Customer"}
-    assert storage.load_settings()["template"] == "Landscape"
+    assert "template" not in storage.load_settings()            # an option, not the new default
     T.delete_template("Landscape")
     assert T.ensure_default_template() == ["Standard"]          # deleting it is respected
 

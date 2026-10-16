@@ -364,6 +364,5 @@ def install_builtin_layouts() -> list[str]:
             src = settings.get("template") or "Standard"
             copy_mapping(src if template_path(src).exists() else "Standard", LANDSCAPE_NAME)
             added.append(LANDSCAPE_NAME)
-            settings["template"] = LANDSCAPE_NAME  # show the new layout first; the old one is a click away
         storage.save_settings(settings)
     return added

@@ -29,8 +29,8 @@ to fit their box, then truncate with "...".
 Half Letter, A4, and 4×6 label, each in **Portrait** or **Landscape** (the dropdown next to the
 page size; turning the page stretches the layout to fit, text sizes stay the same).
 
-**Built-in Landscape layout** (`template.landscape_template`), added once on update and selected the
-first time (it copies the current layout's column matches):
+**Built-in Landscape layout** (`template.landscape_template`), added once on update as an extra choice in the
+Layout dropdown (the selected layout doesn't change; it copies the current layout's column matches):
 - Left: a bordered **Order Details** box with the item list.
 - Right: delivery address (+ access code), delivery instructions.
 - Bottom right: **Total Items** with the count in a box, then a bordered panel with last name (large),
