@@ -106,6 +106,10 @@ class Designer(tk.Toplevel):
         page = ttk.Combobox(bar, textvariable=self.page_var, values=list(T.PAGE_SIZES), state="readonly", width=22)
         page.pack(side="left", padx=4)
         page.bind("<<ComboboxSelected>>", lambda e: self._set_page(self.page_var.get()))
+        self.orient_var = tk.StringVar(value=self.tpl.orientation)
+        orient = ttk.Combobox(bar, textvariable=self.orient_var, values=T.ORIENTATIONS, state="readonly", width=10)
+        orient.pack(side="left", padx=4)
+        orient.bind("<<ComboboxSelected>>", lambda e: self._set_orientation(self.orient_var.get()))
 
         ttk.Button(bar, text="Save", command=self._save).pack(side="right")
         ttk.Button(bar, text="Preview PDF", command=self._preview_pdf).pack(side="right", padx=6)
@@ -542,6 +546,20 @@ class Designer(tk.Toplevel):
                                 f"{len(off)} item(s) are now outside the smaller page. "
                                 "Drag them back on, or delete them.", parent=self)
 
+    def _set_orientation(self, orientation):
+        landscape = orientation == "Landscape"
+        if landscape == self.tpl.landscape:
+            return
+        ow, oh = self.tpl.page_size
+        self.tpl.landscape = landscape
+        nw, nh = self.tpl.page_size
+        # Stretch the layout to the turned page so everything stays on it; text sizes are kept.
+        for e in self.tpl.elements:
+            e["x"], e["w"] = e["x"] * nw / ow, max(e["w"] * nw / ow, 1.0)
+            e["y"], e["h"] = e["y"] * nh / oh, max(e["h"] * nh / oh, 1.0)
+        self._mark_dirty()
+        self.redraw()
+
     # ---------------------------------------------------------- properties
     def _show_props(self):
         for w in self.props.winfo_children():
@@ -742,6 +760,7 @@ class Designer(tk.Toplevel):
         self.tpl_combo.configure(values=sorted(names, key=str.lower))
         self.tpl_var.set(self.tpl.name)
         self.page_var.set(self.tpl.page)
+        self.orient_var.set(self.tpl.orientation)
         for key, sw in self.brand_swatches.items():
             sw.set(self.tpl.brand[key])
 

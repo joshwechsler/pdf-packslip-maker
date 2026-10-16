@@ -26,7 +26,18 @@ to fit their box, then truncate with "...".
 **Designer extras:** an **Item List** element (tick box, quantity, dish name), text items accept `{Field Name}` placeholders (for example
 `{City}, {State} {Zip}`), and field items can split a cell into one line per item
 (at newlines, commas, or semicolons) with optional bullets. Page sizes: Letter,
-Half Letter, A4, and 4×6 label.
+Half Letter, A4, and 4×6 label, each in **Portrait** or **Landscape** (the dropdown next to the
+page size; turning the page stretches the layout to fit, text sizes stay the same).
+
+**Built-in Landscape layout** (`template.landscape_template`), added once on update and selected the
+first time (it copies the current layout's column matches):
+- Left: a bordered **Order Details** box with the item list.
+- Right: delivery address (+ access code), delivery instructions.
+- Bottom right: **Total Items** with the count in a box, then a bordered panel with last name (large),
+  first name, delivery date and driver.
+
+**First Name / Last Name** fields: matched to their own columns if the sheet has them, otherwise split
+from Customer Name ("Jane Q. Smith" → "Jane Q." / "Smith"; "Smith, Jane" works too).
 
 ### Where data lives
 

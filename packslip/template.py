@@ -28,6 +28,7 @@ PAGE_SIZES = {
     "Label (4 × 6 in)": (288.0, 432.0),
 }
 DEFAULT_PAGE = "Letter (8.5 × 11 in)"
+ORIENTATIONS = ["Portrait", "Landscape"]
 
 FONTS = ["Helvetica", "Times", "Courier"]
 
@@ -88,10 +89,16 @@ class Template:
     brand: dict = field(default_factory=lambda: dict(DEFAULT_BRAND))
     elements: list[dict] = field(default_factory=list)
     upgrades: list[str] = field(default_factory=list)  # one-time layout upgrades already applied
+    landscape: bool = False
 
     @property
     def page_size(self) -> tuple[float, float]:
-        return PAGE_SIZES.get(self.page, PAGE_SIZES[DEFAULT_PAGE])
+        w, h = PAGE_SIZES.get(self.page, PAGE_SIZES[DEFAULT_PAGE])
+        return (h, w) if self.landscape else (w, h)
+
+    @property
+    def orientation(self) -> str:
+        return "Landscape" if self.landscape else "Portrait"
 
     def find(self, element_id: str) -> dict | None:
         for el in self.elements:
@@ -110,8 +117,8 @@ class Template:
         return keys
 
     def to_json(self) -> dict:
-        return {"version": 1, "name": self.name, "page": self.page, "brand": self.brand,
-                "elements": self.elements, "upgrades": self.upgrades}
+        return {"version": 1, "name": self.name, "page": self.page, "orientation": self.orientation,
+                "brand": self.brand, "elements": self.elements, "upgrades": self.upgrades}
 
     @classmethod
     def from_json(cls, data: dict) -> "Template":
@@ -122,7 +129,8 @@ class Template:
         page = data.get("page") if data.get("page") in PAGE_SIZES else DEFAULT_PAGE
         t = cls(name=data.get("name") or "Untitled", page=page, brand=brand,
                 elements=[normalize_element(e) for e in data.get("elements") or []],
-                upgrades=list(data.get("upgrades") or []))
+                upgrades=list(data.get("upgrades") or []),
+                landscape=str(data.get("orientation", "")).lower() == "landscape")
         _upgrade_pickup_and_access(t)
         _upgrade_driver(t)
         return t
@@ -261,6 +269,42 @@ def default_template(name: str = "Standard") -> Template:
     return Template(name=name, elements=els, upgrades=["pickup_access", "driver"])
 
 
+LANDSCAPE_NAME = "Landscape"
+
+
+def landscape_template(name: str = LANDSCAPE_NAME) -> Template:
+    """Landscape Letter: the order on the left; address, instructions and a name/date/driver
+    panel on the right (drawn from the Operator's sketch)."""
+    E = make_element
+    A = "brand:accent"
+    els = [
+        # Left: order details
+        E("box", 36, 36, 372, 540, fill="", border="#000000", border_width=1.5),
+        E("text", 50, 48, 344, 18, text="ORDER DETAILS", size=13, bold=True, color="#000000"),
+        E("box", 50, 70, 344, 1, fill="#000000"),
+        E("items", 50, 78, 344, 486, size=12),
+        # Right: where it goes
+        E("text", 432, 40, 324, 14, text="DELIVERY ADDRESS", size=9, bold=True, color=A),
+        E("field", 432, 55, 324, 52, field="address", size=15, bold=True),
+        E("field", 432, 109, 324, 16, field="access_code", label="Access:", size=11),
+        E("field", 432, 127, 324, 16, field="pickup_location", label="Pickup at:", size=11),
+        E("field", 432, 127, 324, 16, field="time_window", label="Window:", size=11, color="#555555"),
+        E("text", 432, 152, 324, 14, text="DELIVERY INSTRUCTIONS", size=9, bold=True, color=A),
+        E("field", 432, 167, 324, 150, field="notes", size=13),
+        # Right, bottom: item count and the label panel
+        E("box", 432, 400, 160, 32, fill="", border="#000000", border_width=1.5),
+        E("text", 442, 408, 140, 18, text="TOTAL ITEMS", size=14, bold=True, color="#000000"),
+        E("box", 604, 400, 64, 32, fill="", border="#000000", border_width=1.5),
+        E("field", 606, 406, 60, 22, field="item_count", size=18, bold=True, align="center", color="#000000"),
+        E("box", 432, 442, 324, 134, fill="", border="#000000", border_width=1.5),
+        E("field", 446, 452, 296, 30, field="last_name", size=24, bold=True, color="#000000"),
+        E("field", 446, 484, 296, 22, field="first_name", size=17, color="#000000"),
+        E("field", 446, 516, 296, 18, field="delivery_date", label="Delivery:", size=13, color="#000000"),
+        E("field", 446, 540, 296, 22, field="driver_stop", label="Driver:", size=15, bold=True, color="#000000"),
+    ]
+    return Template(name=name, elements=els, upgrades=["pickup_access", "driver"], landscape=True)
+
+
 # -- persistence -------------------------------------------------------------
 
 def template_path(name: str) -> Path:
@@ -301,4 +345,25 @@ def ensure_default_template() -> list[str]:
     if not names:
         save_template(default_template())
         names = list_templates()
-    return names
+    install_builtin_layouts()
+    return list_templates()
+
+
+def install_builtin_layouts() -> list[str]:
+    """Add layouts shipped in an app update, once each (deleting one later is respected).
+    A new layout gets a copy of the current layout's column matches so it works straight away."""
+    from .mapping import copy_mapping  # local import: mapping doesn't depend on templates
+
+    settings = storage.load_settings()
+    done = settings.setdefault("builtin_layouts", [])
+    added = []
+    if LANDSCAPE_NAME not in done:
+        done.append(LANDSCAPE_NAME)
+        if not template_path(LANDSCAPE_NAME).exists():
+            save_template(landscape_template())
+            src = settings.get("template") or "Standard"
+            copy_mapping(src if template_path(src).exists() else "Standard", LANDSCAPE_NAME)
+            added.append(LANDSCAPE_NAME)
+            settings["template"] = LANDSCAPE_NAME  # show the new layout first; the old one is a click away
+        storage.save_settings(settings)
+    return added

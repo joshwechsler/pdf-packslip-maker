@@ -23,6 +23,10 @@ from . import storage
 DEFAULT_FIELDS = [
     {"key": "customer_name", "label": "Customer Name", "sample": "Jane Smith",
      "aliases": ["customer name", "customer", "name", "client", "full name", "client name"]},
+    {"key": "first_name", "label": "First Name", "sample": "Jane",
+     "aliases": ["first name", "customer first name", "firstname", "given name"]},
+    {"key": "last_name", "label": "Last Name", "sample": "Smith",
+     "aliases": ["last name", "customer last name", "lastname", "surname", "family name"]},
     {"key": "phone", "label": "Phone", "sample": "(555) 123-4567",
      "aliases": ["phone number", "phone", "mobile", "cell", "tel", "telephone", "contact #", "contact number",
                  "contact"]},
@@ -177,6 +181,20 @@ def clean_detail(text: str) -> str:
     return ", ".join(" ".join(p.split()) for p in parts if p.strip())
 
 
+def _fill_names(vals: dict) -> None:
+    """First/last name from the full name when the sheet has no separate columns (and vice versa).
+    'Jane Q. Smith' -> 'Jane Q.' / 'Smith'; 'Smith, Jane' -> 'Jane' / 'Smith'."""
+    full = " ".join((vals.get("customer_name") or "").split())
+    if full and not (vals.get("first_name") or vals.get("last_name")):
+        if "," in full:
+            last, _, first = full.partition(",")
+        else:
+            first, _, last = full.rpartition(" ")
+        vals["first_name"], vals["last_name"] = first.strip(), last.strip()
+    elif not full:
+        vals["customer_name"] = " ".join(x for x in (vals.get("first_name"), vals.get("last_name")) if x)
+
+
 def split_camel(value: str) -> str:
     """'InStorePickup' -> 'In Store Pickup' (only for single CamelCase words)."""
     if " " in value or not re.fullmatch(r"[A-Za-z]+", value):
@@ -299,6 +317,7 @@ class Mapping:
         for f in self.fields:
             col = self.columns.get(f["key"])
             vals[f["key"]] = row.get(col, "") if col else ""
+        _fill_names(vals)
         if vals.get("phone"):
             vals["phone"] = format_phone(vals["phone"])
         if vals.get("fulfillment"):

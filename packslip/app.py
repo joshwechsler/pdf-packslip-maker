@@ -52,8 +52,9 @@ class App:
         self.dnd = dnd
         self.sheet: Sheet | None = None
         self.mapping: Mapping | None = None  # column matches for the selected layout
+        names = T.ensure_default_template()  # may record new built-in layouts in the settings
         self.settings = storage.load_settings()
-        migrate_legacy_mapping(T.ensure_default_template())
+        migrate_legacy_mapping(names)
         T.install_default_logo()  # refresh the built-in logo after an app update
 
         root.title(APP_NAME)

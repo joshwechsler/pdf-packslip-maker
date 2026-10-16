@@ -25,15 +25,15 @@ def test_mapping_roundtrip_and_custom_field():
 
 def test_template_roundtrip_and_management():
     names = T.ensure_default_template()
-    assert names == ["Standard"]
+    assert names == ["Landscape", "Standard"]
     t = T.load_template("Standard")
     t2 = t.copy("Label 4x6")
     t2.page = "Label (4 × 6 in)"
     T.save_template(t2)
-    assert T.list_templates() == ["Label 4x6", "Standard"]
+    assert T.list_templates() == ["Label 4x6", "Landscape", "Standard"]
     assert T.load_template("Label 4x6").page_size == (288.0, 432.0)
     T.delete_template("Label 4x6")
-    assert T.list_templates() == ["Standard"]
+    assert T.list_templates() == ["Landscape", "Standard"]
 
 
 def test_placeholders_and_split_lines():
