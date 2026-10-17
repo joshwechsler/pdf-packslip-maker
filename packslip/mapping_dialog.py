@@ -6,7 +6,7 @@ import copy
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from .mapping import DEFAULT_FIELDS, ITEM_KEYS, Mapping, auto_map, guess_columns
+from .mapping import DEFAULT_FIELDS, ITEM_KEYS, Mapping, auto_map, guess_columns, split_name
 from .spreadsheet import Sheet
 from .ui_common import ScrollFrame, center_on, dropdown, make_modal
 
@@ -74,6 +74,22 @@ class MappingDialog(tk.Toplevel):
         val = " / ".join(p.strip() for p in val.splitlines() if p.strip())
         return val if len(val) <= 38 else val[:37] + "…"
 
+    def _name_example(self, key: str) -> str:
+        """First/Last Name left unmatched: show the part of Customer Name the slip will use."""
+        full_var = self.vars.get("customer_name")
+        if key not in ("first_name", "last_name") or full_var is None:
+            return ""
+        full = self.sheet.rows[0].get(full_var.get(), "") if self.sheet.rows else ""
+        part = split_name(full)[0 if key == "first_name" else 1]
+        return f"{part} (from Customer Name)" if part else ""
+
+    def _refresh_examples(self):
+        for key, (label, var) in self.examples.items():
+            text = self._example(var.get())
+            if var.get() == NOT_USED_LABEL:
+                text = self._name_example(key)
+            label.configure(text=text)
+
     def _section(self, text, row):
         ttk.Label(self.body, text=text, font=("Helvetica", 13, "bold")).grid(
             row=row, column=0, columnspan=4, sticky="w", pady=(10, 4))
@@ -84,10 +100,10 @@ class MappingDialog(tk.Toplevel):
         var = self.vars.setdefault(key, tk.StringVar())
         var.set(current if current in self.sheet.headers else NOT_USED_LABEL)
         ttk.Label(self.body, text=f["label"], width=20).grid(row=r, column=0, sticky="w", padx=4, pady=3)
-        example = ttk.Label(self.body, text=self._example(var.get()), width=32, foreground="#666666")
+        example = ttk.Label(self.body, text="", width=32, foreground="#666666")
+        self.examples[key] = (example, var)
         combo = dropdown(self.body, var, options, width=26,
-                         command=lambda: (example.configure(text=self._example(var.get())),
-                                          self._update_items_preview()))
+                         command=lambda: (self._refresh_examples(), self._update_items_preview()))
         combo.grid(row=r, column=1, sticky="w", padx=4, pady=3)
         example.grid(row=r, column=2, sticky="w", padx=4)
         if key not in BUILT_IN_KEYS:
@@ -98,6 +114,7 @@ class MappingDialog(tk.Toplevel):
         for child in self.body.winfo_children():
             child.destroy()
         options = [NOT_USED_LABEL] + self.sheet.headers
+        self.examples = {}
         r = 0
         self._section("Customer details", r)
         r += 1
@@ -164,6 +181,7 @@ class MappingDialog(tk.Toplevel):
             if f["key"] in ITEM_KEYS:
                 self._field_row(f, r, options)
                 r += 1
+        self._refresh_examples()
         self._update_items_preview()
 
     def _collect(self):

@@ -60,3 +60,10 @@ def test_landscape_pdf(tmp_path):
     for s in ("ORDER DETAILS", "Oats", "Chili", "9 Oak St", "Side door", "TOTAL ITEMS", "3", "Lee", "Ann",
               "Delivery: Sat, Oct 17, 2026", "Driver: Mike"):
         assert s in text, s
+
+
+def test_split_name_used_by_screen_and_slip():
+    from packslip.mapping import split_name
+    assert split_name("Lucey Sprister") == ("Lucey", "Sprister")
+    assert split_name(" Van Dyke,  Mary Ann ") == ("Mary Ann", "Van Dyke")
+    assert split_name("Cher") == ("", "Cher") and split_name("") == ("", "")

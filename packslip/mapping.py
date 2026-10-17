@@ -181,16 +181,22 @@ def clean_detail(text: str) -> str:
     return ", ".join(" ".join(p.split()) for p in parts if p.strip())
 
 
+def split_name(full: str) -> tuple[str, str]:
+    """(first, last) from a full name: the last word is the last name.
+    'Jane Q. Smith' -> ('Jane Q.', 'Smith'); 'Smith, Jane' -> ('Jane', 'Smith'); 'Cher' -> ('', 'Cher')."""
+    full = " ".join((full or "").split())
+    if "," in full:
+        last, _, first = full.partition(",")
+    else:
+        first, _, last = full.rpartition(" ")
+    return first.strip(), last.strip()
+
+
 def _fill_names(vals: dict) -> None:
-    """First/last name from the full name when the sheet has no separate columns (and vice versa).
-    'Jane Q. Smith' -> 'Jane Q.' / 'Smith'; 'Smith, Jane' -> 'Jane' / 'Smith'."""
+    """First/last name from the full name when the sheet has no separate columns (and vice versa)."""
     full = " ".join((vals.get("customer_name") or "").split())
     if full and not (vals.get("first_name") or vals.get("last_name")):
-        if "," in full:
-            last, _, first = full.partition(",")
-        else:
-            first, _, last = full.rpartition(" ")
-        vals["first_name"], vals["last_name"] = first.strip(), last.strip()
+        vals["first_name"], vals["last_name"] = split_name(full)
     elif not full:
         vals["customer_name"] = " ".join(x for x in (vals.get("first_name"), vals.get("last_name")) if x)
 
