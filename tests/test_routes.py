@@ -56,3 +56,15 @@ def test_route_stop_numbers_decide_the_order():
 def test_route_file_stop_numbers_are_printed_as_given():
     plan = make_plan(_vals(), {0: "Mike", 1: "Mike"}, ["Mike"], stops={0: 5, 1: 2})
     assert plan.stop_of() == {1: ("Mike", 2), 0: ("Mike", 5)}
+
+
+def test_driver_column_is_never_an_instructions_or_contact_column():
+    # The bug: "Driver Instructions" was picked as the driver's name column.
+    for extra in ("Driver Instructions", "Driver Notes", "Driver Phone", "Driver Email", "Delivery Address"):
+        assert guess_route_columns(["Order", "Customer", extra]).driver == "", extra
+    assert guess_route_columns(["Order", "Customer", "Driver Instructions", "Driver"]).driver == "Driver"
+    assert guess_route_columns(["Order #", "Customer Name", "Driver Instructions", "Assigned Driver"]).driver == \
+        "Assigned Driver"
+    # A saved choice of such a column is not reused.
+    saved = RouteColumns(order="Order", customer="Customer", driver="Driver Instructions")
+    assert not saved.fits(["Order", "Customer", "Driver Instructions"])

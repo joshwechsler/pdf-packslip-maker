@@ -173,7 +173,8 @@ a driver name and an order number or customer name (other columns are ignored).
 2. Click **Driver List…**, or drag the file in after the orders. It is recognised by having a driver
    column and no item columns.
 3. Check the columns on the small screen (Order number, Customer name, Driver name, optional Stop #).
-   It previews how many orders matched and names the ones that didn't. The choices are remembered
+   It previews how many orders matched, lists the driver names found, and names the orders that didn't match.
+   Columns about the driver but not their name ("Driver Instructions", phone, notes…) are never guessed. The choices are remembered
    per layout (`drivers.json` → `route_columns`).
 
 Matching (`routes.join_routes`):

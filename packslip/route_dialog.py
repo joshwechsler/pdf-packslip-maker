@@ -73,6 +73,10 @@ class RouteDialog(tk.Toplevel):
         if res.by_name:
             text += f" ({res.by_name} by customer name)"
         text += "."
+        names = sorted(set(res.assignment.values()), key=str.lower)
+        if names:  # so a wrong column (e.g. instructions) is obvious at a glance
+            shown = ", ".join(n if len(n) <= 30 else n[:29] + "…" for n in names[:4])
+            text += f"\nDrivers: {shown}" + (f" and {len(names) - 4} more" if len(names) > 4 else "")
         if cols.stop:
             text += f"  {len(res.stops)} have a stop number."
         if missing:

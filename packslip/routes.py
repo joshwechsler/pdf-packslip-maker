@@ -37,6 +37,14 @@ def norm_name(v: str) -> str:
     return " ".join(re.sub(r"[^a-z0-9 ]", " ", (v or "").lower()).split())
 
 
+# Headings that mention a driver but don't hold the driver's name (e.g. "Driver Instructions").
+_NOT_A_NAME = re.compile(r"instruction|note|comment|phone|mobile|tel|email|address|code|tip", re.I)
+
+
+def is_driver_name_column(header: str) -> bool:
+    return bool(header) and not _NOT_A_NAME.search(header)
+
+
 def _stop_number(v: str) -> int | None:
     m = re.search(r"\d+", v or "")
     return int(m.group()) if m else None
@@ -61,11 +69,15 @@ class RouteColumns:
         return bool(self.driver and (self.order or self.customer))
 
     def fits(self, headers: list[str]) -> bool:
-        return self.usable() and all(c in headers for c in (self.order, self.customer, self.driver, self.stop) if c)
+        """True if this saved choice can be reused for a file with these headings."""
+        return self.usable() and is_driver_name_column(self.driver) and all(c in headers for c in (self.order, self.customer, self.driver, self.stop) if c)
 
 
 def guess_route_columns(headers: list[str]) -> RouteColumns:
-    g = guess_columns(ROUTE_FIELDS, headers)
+    names = [h for h in headers if is_driver_name_column(h)]
+    g = guess_columns([f for f in ROUTE_FIELDS if f["key"] == "driver"], names)
+    rest = [h for h in headers if h != g.get("driver")]
+    g.update(guess_columns([f for f in ROUTE_FIELDS if f["key"] != "driver"], rest))
     return RouteColumns(order=g.get("order", ""), customer=g.get("customer", ""), driver=g.get("driver", ""),
                         stop=g.get("stop", ""))
 
