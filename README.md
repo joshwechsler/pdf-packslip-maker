@@ -36,6 +36,15 @@ Layout dropdown (the selected layout doesn't change; it copies the current layou
 - Bottom right: **Total Items** with the count in a box, then a bordered panel with last name (large),
   first name, delivery date and driver.
 
+**Bags** (per layout, Edit Layout → *Max items per bag*, 0 = off; the built-in Landscape layout starts at 10):
+- A delivery order with more items than that gets one slip per bag, right after each other:
+  1–10 items = 1 slip, 11–20 = 2, 21–30 = 3. Pickup orders always get one slip.
+- The **Bag** field prints "1/2", "2/2"… (label it "Bag:"). Total Items shows the whole order on every slip.
+- Extra bag slips leave out every item ticked **First bag only** (on the Landscape layout: the Order
+  Details box, its title and the item list), so only the right-hand column prints.
+- Layouts saved before this feature are not changed: set the number, add the Bag field and tick
+  First bag only yourself.
+
 **First Name / Last Name** fields: matched to their own columns if the sheet has them, otherwise split
 from Customer Name ("Jane Q. Smith" → "Jane Q." / "Smith"; "Smith, Jane" works too).
 

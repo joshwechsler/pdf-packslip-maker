@@ -31,5 +31,5 @@ When a new version is ready, the app asks when it opens. Click **Update Now**: i
 
 - **New dishes this week?** Nothing to do. Every column between **Address** and **Delivery Fee** is treated as a menu item, so new or renamed dishes are picked up automatically. Keep those two headings as they are.
 - **"Missing columns" message:** a column heading in the spreadsheet changed. Click **Remap Fields…**, fix the matches, click **Save Matches**, then **Generate** again.
-- **Something on the slip is in the wrong place:** click **Edit Layout…**, drag it where you want it, then click **Save**. Sideways pages: pick **Landscape** next to the page size, or choose the ready-made **Landscape** layout.
+- **Something on the slip is in the wrong place:** click **Edit Layout…**, drag it where you want it, then click **Save**. Sideways pages: pick **Landscape** next to the page size, or choose the ready-made **Landscape** layout. Big orders: set **Max items per bag** (e.g. 10).
 - **"Something went wrong" message:** try again. If it keeps happening, send the file named in the message to the person who set up the app.

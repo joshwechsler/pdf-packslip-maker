@@ -21,7 +21,8 @@ from . import storage
 from . import template as T
 from .layout import ascent, fit_text, inner_box, items_primitives
 from .mapping import ITEMS_KEY, Mapping, copy_mapping, delete_mapping, load_mapping, rename_mapping
-from .pdfgen import render_preview_pdf
+from .drivers import is_pickup
+from .pdfgen import item_total, bag_count, render_preview_pdf
 from .spreadsheet import Sheet
 from .ui_common import ColorSwatch, ask_name, open_path
 
@@ -156,6 +157,15 @@ class Designer(tk.Toplevel):
             self.brand_swatches[key] = sw
         ttk.Label(p, text="Items set to a brand color update when you change it here.",
                   foreground="#666666", wraplength=290).pack(anchor="w", pady=(0, 6))
+        bags = ttk.Frame(p)
+        bags.pack(fill="x", pady=(4, 0))
+        ttk.Label(bags, text="Max items per bag").pack(side="left")
+        self.bag_var = tk.StringVar(value=str(self.tpl.bag_size))
+        ttk.Spinbox(bags, from_=0, to=99, increment=1, textvariable=self.bag_var, width=4).pack(side="left", padx=8)
+        self.bag_var.trace_add("write", lambda *_: self._set_bag_size())
+        ttk.Label(p, text="Bigger delivery orders get an extra slip per bag (\u201cBag: 2/2\u201d). "
+                          "Items ticked \u201cFirst bag only\u201d are left off the extra slips. 0 = off.",
+                  foreground="#666666", wraplength=290).pack(anchor="w", pady=(2, 6))
         ttk.Separator(p).pack(fill="x", pady=8)
         self.props = ttk.Frame(p)
         self.props.pack(fill="both", expand=True)
@@ -173,6 +183,9 @@ class Designer(tk.Toplevel):
         if records:
             self.preview_index %= len(records)
             vals = self.mapping.values_for_row(records[self.preview_index])
+            if self.tpl.bag_size > 0:  # the preview shows the first bag's slip
+                bags = 1 if is_pickup(vals) else bag_count(item_total(vals), self.tpl.bag_size)
+                vals["bag"] = f"1/{bags}"
         else:
             vals = self.mapping.sample_values()
         if self.extra_values:
@@ -546,6 +559,17 @@ class Designer(tk.Toplevel):
                                 f"{len(off)} item(s) are now outside the smaller page. "
                                 "Drag them back on, or delete them.", parent=self)
 
+    def _set_bag_size(self):
+        if self._syncing:
+            return
+        try:
+            size = max(0, int(self.bag_var.get() or 0))
+        except ValueError:
+            return
+        if size != self.tpl.bag_size:
+            self.tpl.bag_size = size
+            self._mark_dirty()
+
     def _set_orientation(self, orientation):
         landscape = orientation == "Landscape"
         if landscape == self.tpl.landscape:
@@ -706,6 +730,12 @@ class Designer(tk.Toplevel):
             add_row("Rounded corners", ttk.Spinbox(grid, from_=0, to=40, increment=1, textvariable=rvar, width=6))
             bind_var(rvar, "radius", lambda v: max(0.0, float(v)))
 
+        first_only = tk.BooleanVar(value=bool(el.get("first_bag_only")))
+        ttk.Checkbutton(grid, text="First bag only (left off extra bag slips)", variable=first_only).grid(
+            row=row[0], column=0, columnspan=2, sticky="w", pady=(4, 0))
+        row[0] += 1
+        bind_var(first_only, "first_bag_only")
+
         # Position & size in inches (more natural than points for most people).
         ttk.Separator(p).pack(fill="x", pady=6)
         geo = ttk.Frame(p)
@@ -761,6 +791,11 @@ class Designer(tk.Toplevel):
         self.tpl_var.set(self.tpl.name)
         self.page_var.set(self.tpl.page)
         self.orient_var.set(self.tpl.orientation)
+        self._syncing = True
+        try:
+            self.bag_var.set(str(self.tpl.bag_size))
+        finally:
+            self._syncing = False
         for key, sw in self.brand_swatches.items():
             sw.set(self.tpl.brand[key])
 

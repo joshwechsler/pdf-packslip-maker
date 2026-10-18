@@ -13,7 +13,7 @@ from reportlab.pdfgen import canvas as rl_canvas
 from . import APP_NAME, storage
 from .layout import ascent, fit_text, inner_box, items_primitives, line_width, pdf_font
 from .delivery_list import draw_delivery_list
-from .drivers import make_plan
+from .drivers import is_pickup, make_plan
 from .mapping import ITEMS_KEY, Mapping
 from .spreadsheet import Sheet
 from .template import Template, element_text, resolve_color
@@ -47,7 +47,9 @@ class _ImageCache:
         return self._cache[name]
 
 
-def draw_page(c, template: Template, values: dict[str, str], mapping: Mapping, images: _ImageCache) -> None:
+def draw_page(c, template: Template, values: dict[str, str], mapping: Mapping, images: _ImageCache,
+              extra_bag: bool = False) -> None:
+    """`extra_bag`: a second/third… bag's slip, which leaves out elements marked "first bag only"."""
     _, page_h = template.page_size
     brand = template.brand
 
@@ -55,6 +57,8 @@ def draw_page(c, template: Template, values: dict[str, str], mapping: Mapping, i
         return page_h - y - h
 
     for el in template.elements:
+        if extra_bag and el.get("first_bag_only"):
+            continue
         x, y, w, h = el["x"], el["y"], el["w"], el["h"]
         etype = el["type"]
 
@@ -170,6 +174,20 @@ def default_output_path(sheet_path: Path, delivery: dt.date | None = None) -> Pa
     return out
 
 
+def bag_count(items: int, bag_size: int) -> int:
+    """1-10 items -> 1 bag, 11-20 -> 2, ... (bag_size 0 = bags off)."""
+    if bag_size <= 0 or items <= bag_size:
+        return 1
+    return -(-items // bag_size)
+
+
+def item_total(values: dict) -> int:
+    try:
+        return int(float(values.get("item_count") or 0))
+    except ValueError:
+        return 0
+
+
 def _name_key(values: dict) -> tuple:
     last = (values.get("last_name") or "").strip().lower()
     first = (values.get("first_name") or "").strip().lower()
@@ -211,9 +229,14 @@ def generate_pdf(out_path: str | Path, template: Template, mapping: Mapping, she
         # Slips print A-Z by last name (then first name) so they're easy to find; orders with no name go last.
         order.sort(key=lambda i: _name_key(all_values[i]))
         for n, i in enumerate(order, 1):
-            c.setPageSize((w, h))
-            draw_page(c, template, all_values[i], mapping, images)
-            c.showPage()
+            values = all_values[i]
+            # Big delivery orders get one slip per bag; pickups always get one.
+            bags = 1 if is_pickup(values) else bag_count(item_total(values), template.bag_size)
+            for bag in range(1, bags + 1):
+                values["bag"] = f"{bag}/{bags}" if template.bag_size > 0 else ""
+                c.setPageSize((w, h))
+                draw_page(c, template, values, mapping, images, extra_bag=bag > 1)
+                c.showPage()
             if progress:
                 progress(n, total)
         c.save()

@@ -90,6 +90,7 @@ class Template:
     elements: list[dict] = field(default_factory=list)
     upgrades: list[str] = field(default_factory=list)  # one-time layout upgrades already applied
     landscape: bool = False
+    bag_size: int = 0   # max items per bag; bigger orders get extra slips (0 = off)
 
     @property
     def page_size(self) -> tuple[float, float]:
@@ -118,7 +119,7 @@ class Template:
 
     def to_json(self) -> dict:
         return {"version": 1, "name": self.name, "page": self.page, "orientation": self.orientation,
-                "brand": self.brand, "elements": self.elements, "upgrades": self.upgrades}
+                "bag_size": self.bag_size, "brand": self.brand, "elements": self.elements, "upgrades": self.upgrades}
 
     @classmethod
     def from_json(cls, data: dict) -> "Template":
@@ -130,7 +131,8 @@ class Template:
         t = cls(name=data.get("name") or "Untitled", page=page, brand=brand,
                 elements=[normalize_element(e) for e in data.get("elements") or []],
                 upgrades=list(data.get("upgrades") or []),
-                landscape=str(data.get("orientation", "")).lower() == "landscape")
+                landscape=str(data.get("orientation", "")).lower() == "landscape",
+                bag_size=_int(data.get("bag_size")))
         _upgrade_pickup_and_access(t)
         _upgrade_driver(t)
         return t
@@ -140,6 +142,13 @@ class Template:
         if name:
             t.name = name
         return t
+
+
+def _int(v) -> int:
+    try:
+        return max(0, int(v or 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 _PLACEHOLDER = re.compile(r"\{([^{}]+)\}")
@@ -279,10 +288,11 @@ def landscape_template(name: str = LANDSCAPE_NAME) -> Template:
     A = "brand:accent"
     els = [
         # Left: order details
-        E("box", 36, 36, 372, 540, fill="", border="#000000", border_width=1.5),
-        E("text", 50, 48, 344, 18, text="ORDER DETAILS", size=13, bold=True, color="#000000"),
-        E("box", 50, 70, 344, 1, fill="#000000"),
-        E("items", 50, 78, 344, 486, size=12),
+        E("box", 36, 36, 372, 540, fill="", border="#000000", border_width=1.5, first_bag_only=True),
+        E("text", 50, 48, 344, 18, text="ORDER DETAILS", size=13, bold=True, color="#000000",
+          first_bag_only=True),
+        E("box", 50, 70, 344, 1, fill="#000000", first_bag_only=True),
+        E("items", 50, 78, 344, 486, size=12, first_bag_only=True),
         # Right: where it goes
         E("text", 432, 40, 324, 14, text="DELIVERY ADDRESS", size=9, bold=True, color=A),
         E("field", 432, 55, 324, 52, field="address", size=15, bold=True),
@@ -297,12 +307,13 @@ def landscape_template(name: str = LANDSCAPE_NAME) -> Template:
         E("box", 604, 400, 64, 32, fill="", border="#000000", border_width=1.5),
         E("field", 606, 406, 60, 22, field="item_count", size=18, bold=True, align="center", color="#000000"),
         E("box", 432, 442, 324, 134, fill="", border="#000000", border_width=1.5),
-        E("field", 446, 452, 296, 30, field="last_name", size=24, bold=True, color="#000000"),
-        E("field", 446, 484, 296, 22, field="first_name", size=17, color="#000000"),
-        E("field", 446, 516, 296, 18, field="delivery_date", label="Delivery:", size=13, color="#000000"),
-        E("field", 446, 540, 296, 22, field="driver_stop", label="Driver:", size=15, bold=True, color="#000000"),
+        E("field", 446, 450, 296, 28, field="last_name", size=24, bold=True, color="#000000"),
+        E("field", 446, 479, 296, 20, field="first_name", size=17, color="#000000"),
+        E("field", 446, 503, 296, 17, field="delivery_date", label="Delivery:", size=13, color="#000000"),
+        E("field", 446, 523, 296, 18, field="bag", label="Bag:", size=14, bold=True, color="#000000"),
+        E("field", 446, 546, 296, 22, field="driver_stop", label="Driver:", size=15, bold=True, color="#000000"),
     ]
-    return Template(name=name, elements=els, upgrades=["pickup_access", "driver"], landscape=True)
+    return Template(name=name, elements=els, upgrades=["pickup_access", "driver"], landscape=True, bag_size=10)
 
 
 # -- persistence -------------------------------------------------------------
