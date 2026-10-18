@@ -91,7 +91,7 @@ def test_real_shaped_sample_renders_items_table(tmp_path):
     assert len(reader.pages) == 12
     first = sheet.rows[0]
     ordered = [h for h in m.item_headers(sheet.headers) if first[h]]
-    text = reader.pages[0].extract_text()
+    text = next(t for t in (pg.extract_text() for pg in reader.pages) if first[m.columns["customer_name"]] in t)
     assert ordered and all(name in text for name in ordered)
     assert "Total items:" in text and "{Total Items}" not in text
 

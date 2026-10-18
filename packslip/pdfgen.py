@@ -170,6 +170,12 @@ def default_output_path(sheet_path: Path, delivery: dt.date | None = None) -> Pa
     return out
 
 
+def _name_key(values: dict) -> tuple:
+    last = (values.get("last_name") or "").strip().lower()
+    first = (values.get("first_name") or "").strip().lower()
+    return (not (last or first), last, first)
+
+
 def generate_pdf(out_path: str | Path, template: Template, mapping: Mapping, sheet: Sheet,
                  progress: Callable[[int, int], None] | None = None, extra: dict | None = None,
                  drivers: dict[int, str] | None = None, driver_order: list[str] | None = None,
@@ -177,7 +183,7 @@ def generate_pdf(out_path: str | Path, template: Template, mapping: Mapping, she
     """`extra` values (e.g. the chosen delivery date) are added to every page.
 
     `drivers` maps record index -> driver name (from the driver list file). If any are set, the PDF
-    starts with a delivery list and the slips follow in route order, each showing its driver."""
+    starts with a delivery list (in route order); each slip shows its driver."""
     check_ready(template, mapping, sheet)
     out_path = Path(out_path)
     w, h = template.page_size
@@ -198,11 +204,12 @@ def generate_pdf(out_path: str | Path, template: Template, mapping: Mapping, she
         if drivers and any(drivers.values()):
             plan = make_plan(all_values, drivers, driver_order or [], stops)
             draw_delivery_list(c, plan, all_values, (extra or {}).get("delivery_date", ""))
-            order = plan.order()
             for i, (driver, stop) in plan.stop_of().items():
                 all_values[i]["driver"] = driver
                 # "Mike · Stop 5" when the driver list has stop numbers, otherwise just "Mike"
                 all_values[i]["driver_stop"] = f"{driver} · Stop {stop}" if i in plan.given_stops else driver
+        # Slips print A-Z by last name (then first name) so they're easy to find; orders with no name go last.
+        order.sort(key=lambda i: _name_key(all_values[i]))
         for n, i in enumerate(order, 1):
             c.setPageSize((w, h))
             draw_page(c, template, all_values[i], mapping, images)

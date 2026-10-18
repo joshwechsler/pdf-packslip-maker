@@ -53,10 +53,11 @@ def test_pdf_starts_with_delivery_list_and_slips_show_driver(tmp_path):
     assert n == 4 and len(pages) == 3 + 4                  # Mike, Sara, Gym East pickups + 4 slips
     assert pages[0].startswith("Driver: Mike") and "2 stops" in pages[0] and "Side door" in pages[0]
     assert pages[1].startswith("Driver: Sara") and pages[2].startswith("Pickups: Gym East")
-    assert "Bob" in pages[3] and "Driver: Mike" in pages[3] and "Stop" not in pages[3]   # no stops in the file
-    assert "Ann" in pages[4] and "Driver: Mike" in pages[4]
-    assert "Dan" in pages[5] and "Driver: Sara" in pages[5]
-    assert "Cat" in pages[6] and "Driver:" not in pages[6]
+    # slips A-Z by name
+    assert "Ann" in pages[3] and "Driver: Mike" in pages[3] and "Stop" not in pages[3]   # no stops in the file
+    assert "Bob" in pages[4] and "Driver: Mike" in pages[4]
+    assert "Cat" in pages[5] and "Driver:" not in pages[5]
+    assert "Dan" in pages[6] and "Driver: Sara" in pages[6]
 
 
 def test_no_drivers_means_no_list(tmp_path):
@@ -74,3 +75,19 @@ def test_slip_shows_stop_only_when_the_driver_list_has_one(tmp_path):
     ann = next(t for t in slips if "Ann" in t)
     bob = next(t for t in slips if "Bob" in t)
     assert "Driver: Mike · Stop 5" in ann and "Stop" not in bob
+
+
+def test_slips_print_a_to_z_by_last_name(tmp_path):
+    p = tmp_path / "names.csv"
+    p.write_text("Order,Customer,Product,Quantity\n"
+                 "1,John Hale,Oats,1\n2,deven iannone,Chili,1\n3,Ann Hale,Tacos,1\n4,,Salad,1\n5,Zoe Adams,Pie,1\n")
+    sheet = load(p)
+    m = auto_map(Mapping(), sheet.headers, sheet.rows)
+    out = tmp_path / "abc.pdf"
+    generate_pdf(out, T.default_template("F"), m, sheet, drivers={0: "Mike", 1: "Sara"})
+    pages = [pg.extract_text() for pg in PdfReader(out).pages]
+    assert pages[0].startswith("Driver: Mike")                       # delivery list keeps route order
+    slips = [t for t in pages if "PACKING SLIP" in t]
+    names = ["Zoe Adams", "Ann Hale", "John Hale", "deven iannone"]
+    assert [next(n for n in names if n in t) for t in slips[:4]] == names   # same last name -> first name
+    assert "Salad" in slips[4]                                        # no name: last

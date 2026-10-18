@@ -186,7 +186,7 @@ Then:
   file has stop numbers. Orders not in the list print without a driver.
 - The PDF starts with a landscape **delivery list**: one section per driver (stops in the file's
   order, else by zip/town/street), then deliveries without a driver, then pickups by location.
-  The slips follow in the same order.
+  The pack slips after it are always A–Z by last name, then first name (orders with no name last).
 - The driver list is per week: loading a new orders file clears it.
 
 ## Real spreadsheet format
