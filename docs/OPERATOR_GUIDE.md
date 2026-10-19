@@ -15,13 +15,13 @@
 4. Check the **Delivery date**. It remembers your usual delivery day, so normally it's already right. Use the dropdown or **Calendar…** to change it. This date prints on every slip.
 5. Optional, drivers: drag in your **driver list** (or click **Driver List…**) and check the columns. Each slip then shows its driver, and the PDF starts with each driver's delivery list.
 6. Click **Generate Pack Slips for (date)**.
-7. Click **Open PDF to Print**, then press **⌘P** to print. One page = one customer.
+7. Click **Open PDF to Print**, then press **⌘P**. Pickup bag labels: **Generate Bag Labels**, print on the Zebra at **Actual size**.
 
 The PDF is saved in the **same folder as your spreadsheet**, named **Pack Slips – (spreadsheet name) – delivery (date).pdf**.
 
 ## A second business
 
-Each business has its own **layout**, with its own columns, logo and delivery day. Just drop in that business's spreadsheet (.xlsx or .csv, including exports with one row per item): the app switches to the matching layout by itself. The very first time, it asks if it's a different business. Choose **make a new layout**, name it, check the column matches, then use **Edit Layout…** to add that business's logo.
+Each business has its own **layout** (columns, logo, delivery day). Drop in its spreadsheet and the app switches layout by itself. The first time, choose **make a new layout**, check the matches, then add the logo in **Edit Layout…**.
 
 ## Updates
 

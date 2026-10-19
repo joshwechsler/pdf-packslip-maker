@@ -20,7 +20,7 @@ from PIL import Image, ImageTk
 from . import storage
 from . import template as T
 from .layout import ascent, fit_text, inner_box, items_primitives
-from .mapping import ITEMS_KEY, Mapping, copy_mapping, delete_mapping, load_mapping, rename_mapping
+from .mapping import COMPUTED_KEYS, ITEMS_KEY, Mapping, copy_mapping, delete_mapping, load_mapping, rename_mapping
 from .drivers import is_pickup
 from .pdfgen import item_total, bag_count, render_preview_pdf
 from .spreadsheet import Sheet
@@ -138,7 +138,7 @@ class Designer(tk.Toplevel):
     def _rebuild_field_menu(self):
         self.field_menu.delete(0, "end")
         for f in self.mapping.all_fields():
-            mapped = self.mapping.columns.get(f["key"]) or f["key"] == "item_count" or (
+            mapped = self.mapping.columns.get(f["key"]) or f["key"] in COMPUTED_KEYS or (
                 f["key"] in ("items", "quantity") and self.mapping.items_mode == "columns")
             label = f["label"] if mapped else f"{f['label']}  (not matched to a column)"
             self.field_menu.add_command(label=label, command=lambda k=f["key"]: self._add_field(k))
@@ -163,9 +163,17 @@ class Designer(tk.Toplevel):
         self.bag_var = tk.StringVar(value=str(self.tpl.bag_size))
         ttk.Spinbox(bags, from_=0, to=99, increment=1, textvariable=self.bag_var, width=4).pack(side="left", padx=8)
         self.bag_var.trace_add("write", lambda *_: self._set_bag_size())
-        ttk.Label(p, text="Bigger delivery orders get an extra slip per bag (\u201cBag: 2/2\u201d). "
-                          "Items ticked \u201cFirst bag only\u201d are left off the extra slips. 0 = off.",
-                  foreground="#666666", wraplength=290).pack(anchor="w", pady=(2, 6))
+        self.bag_help = ttk.Label(p, text="", foreground="#666666", wraplength=290)
+        self.bag_help.pack(anchor="w", pady=(2, 6))
+        # Bag-label layouts only: which orders get labels.
+        self.label_opts = ttk.Frame(p)
+        ttk.Label(self.label_opts, text="Labels for").pack(side="left")
+        self.label_orders_var = tk.StringVar()
+        lo = ttk.Combobox(self.label_opts, textvariable=self.label_orders_var, values=list(T.LABEL_ORDERS.values()),
+                          state="readonly", width=16)
+        lo.pack(side="left", padx=8)
+        lo.bind("<<ComboboxSelected>>", lambda e: self._set_label_orders())
+        self._show_kind_options()
         ttk.Separator(p).pack(fill="x", pady=8)
         self.props = ttk.Frame(p)
         self.props.pack(fill="both", expand=True)
@@ -184,7 +192,8 @@ class Designer(tk.Toplevel):
             self.preview_index %= len(records)
             vals = self.mapping.values_for_row(records[self.preview_index])
             if self.tpl.bag_size > 0:  # the preview shows the first bag's slip
-                bags = 1 if is_pickup(vals) else bag_count(item_total(vals), self.tpl.bag_size)
+                one = is_pickup(vals) and self.tpl.kind != T.LABEL  # pack slips: pickups get one slip
+                bags = 1 if one else bag_count(item_total(vals), self.tpl.bag_size)
                 vals["bag"] = f"1/{bags}"
         else:
             vals = self.mapping.sample_values()
@@ -559,6 +568,24 @@ class Designer(tk.Toplevel):
                                 f"{len(off)} item(s) are now outside the smaller page. "
                                 "Drag them back on, or delete them.", parent=self)
 
+    def _show_kind_options(self):
+        """Settings that differ between pack-slip and bag-label layouts."""
+        if self.tpl.kind == T.LABEL:
+            self.bag_help.configure(text="One label per bag (\u201cBag 2/3\u201d), A\u2013Z by last name. "
+                                         "0 = one label per order.")
+            self.label_orders_var.set(T.LABEL_ORDERS[self.tpl.label_orders])
+            self.label_opts.pack(anchor="w", pady=(0, 6), after=self.bag_help)
+        else:
+            self.bag_help.configure(text="Bigger delivery orders get an extra slip per bag (\u201cBag: 2/2\u201d). "
+                                         "Items ticked \u201cFirst bag only\u201d are left off the extra slips. 0 = off.")
+            self.label_opts.pack_forget()
+
+    def _set_label_orders(self):
+        key = next(k for k, v in T.LABEL_ORDERS.items() if v == self.label_orders_var.get())
+        if key != self.tpl.label_orders:
+            self.tpl.label_orders = key
+            self._mark_dirty()
+
     def _set_bag_size(self):
         if self._syncing:
             return
@@ -791,6 +818,7 @@ class Designer(tk.Toplevel):
         self.tpl_var.set(self.tpl.name)
         self.page_var.set(self.tpl.page)
         self.orient_var.set(self.tpl.orientation)
+        self._show_kind_options()
         self._syncing = True
         try:
             self.bag_var.set(str(self.tpl.bag_size))

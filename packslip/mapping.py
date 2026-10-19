@@ -72,6 +72,7 @@ COMPUTED_FIELDS = [
     {"key": "driver", "label": "Driver", "sample": "Mike"},
     {"key": "driver_stop", "label": "Driver & Stop", "sample": "Mike · Stop 3"},
     {"key": "bag", "label": "Bag", "sample": "1/2"},
+    {"key": "last_first", "label": "Last, First Name", "sample": "Smith, Jane"},
 ]
 COMPUTED_KEYS = {f["key"] for f in COMPUTED_FIELDS}
 
@@ -200,6 +201,7 @@ def _fill_names(vals: dict) -> None:
         vals["first_name"], vals["last_name"] = split_name(full)
     elif not full:
         vals["customer_name"] = " ".join(x for x in (vals.get("first_name"), vals.get("last_name")) if x)
+    vals["last_first"] = ", ".join(x for x in (vals.get("last_name"), vals.get("first_name")) if x)
 
 
 def split_camel(value: str) -> str:

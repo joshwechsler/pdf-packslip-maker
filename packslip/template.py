@@ -26,9 +26,16 @@ PAGE_SIZES = {
     "Half Letter (5.5 × 8.5 in)": (396.0, 612.0),
     "A4": (595.28, 841.89),
     "Label (4 × 6 in)": (288.0, 432.0),
+    "Label (2.25 × 1 in)": (162.0, 72.0),
+    "Label (2.25 × 1.25 in)": (162.0, 90.0),
+    "Label (4 × 2 in)": (288.0, 144.0),
 }
 DEFAULT_PAGE = "Letter (8.5 × 11 in)"
 ORIENTATIONS = ["Portrait", "Landscape"]
+# Layout kinds: pack slips (one page per order) and bag labels (one small label per bag).
+SLIP, LABEL = "slip", "label"
+# Which orders a bag-label layout prints labels for.
+LABEL_ORDERS = {"pickup": "Pickup orders", "delivery": "Delivery orders", "all": "All orders"}
 
 FONTS = ["Helvetica", "Times", "Courier"]
 
@@ -91,6 +98,8 @@ class Template:
     upgrades: list[str] = field(default_factory=list)  # one-time layout upgrades already applied
     landscape: bool = False
     bag_size: int = 0   # max items per bag; bigger orders get extra slips (0 = off)
+    kind: str = SLIP
+    label_orders: str = "pickup"   # bag labels only: which orders get labels
 
     @property
     def page_size(self) -> tuple[float, float]:
@@ -119,7 +128,8 @@ class Template:
 
     def to_json(self) -> dict:
         return {"version": 1, "name": self.name, "page": self.page, "orientation": self.orientation,
-                "bag_size": self.bag_size, "brand": self.brand, "elements": self.elements, "upgrades": self.upgrades}
+                "bag_size": self.bag_size, "kind": self.kind,
+                "label_orders": self.label_orders, "brand": self.brand, "elements": self.elements, "upgrades": self.upgrades}
 
     @classmethod
     def from_json(cls, data: dict) -> "Template":
@@ -132,9 +142,12 @@ class Template:
                 elements=[normalize_element(e) for e in data.get("elements") or []],
                 upgrades=list(data.get("upgrades") or []),
                 landscape=str(data.get("orientation", "")).lower() == "landscape",
-                bag_size=_int(data.get("bag_size")))
-        _upgrade_pickup_and_access(t)
-        _upgrade_driver(t)
+                bag_size=_int(data.get("bag_size")),
+                kind=LABEL if data.get("kind") == LABEL else SLIP,
+                label_orders=data.get("label_orders") if data.get("label_orders") in LABEL_ORDERS else "pickup")
+        if t.kind == SLIP:
+            _upgrade_pickup_and_access(t)
+            _upgrade_driver(t)
         return t
 
     def copy(self, name: str | None = None) -> "Template":
@@ -316,17 +329,32 @@ def landscape_template(name: str = LANDSCAPE_NAME) -> Template:
     return Template(name=name, elements=els, upgrades=["pickup_access", "driver"], landscape=True, bag_size=10)
 
 
+LABEL_NAME = "Pickup Bag Label"
+
+
+def pickup_label_template(name: str = LABEL_NAME) -> Template:
+    """A 2.25 × 1 in roll label (e.g. Zebra) for each pickup bag: "Aguilera, Megan" / "Bag 2/3"."""
+    E = make_element
+    els = [
+        E("field", 6, 11, 150, 26, field="last_first", size=17, bold=True, align="center", color="#000000"),
+        E("field", 6, 42, 150, 20, field="bag", label="Bag", size=15, align="center", color="#000000"),
+    ]
+    return Template(name=name, page="Label (2.25 × 1 in)", elements=els, upgrades=["pickup_access", "driver"],
+                    bag_size=10, kind=LABEL, label_orders="pickup")
+
+
 # -- persistence -------------------------------------------------------------
 
 def template_path(name: str) -> Path:
     return storage.templates_dir() / f"{storage.safe_filename(name)}.json"
 
 
-def list_templates() -> list[str]:
+def list_templates(kind: str | None = None) -> list[str]:
+    """All layout names, or only pack slips (SLIP) / bag labels (LABEL)."""
     names = []
     for p in sorted(storage.templates_dir().glob("*.json")):
         data = storage.read_json(p)
-        if isinstance(data, dict):
+        if isinstance(data, dict) and (kind is None or (LABEL if data.get("kind") == LABEL else SLIP) == kind):
             names.append(data.get("name") or p.stem)
     return sorted(set(names), key=str.lower)
 
@@ -352,12 +380,11 @@ def delete_template(name: str) -> None:
 
 
 def ensure_default_template() -> list[str]:
-    names = list_templates()
-    if not names:
+    """Make sure the built-in layouts exist; returns the pack-slip layouts."""
+    if not list_templates(SLIP):
         save_template(default_template())
-        names = list_templates()
     install_builtin_layouts()
-    return list_templates()
+    return list_templates(SLIP)
 
 
 def install_builtin_layouts() -> list[str]:
@@ -375,5 +402,13 @@ def install_builtin_layouts() -> list[str]:
             src = settings.get("template") or "Standard"
             copy_mapping(src if template_path(src).exists() else "Standard", LANDSCAPE_NAME)
             added.append(LANDSCAPE_NAME)
+        storage.save_settings(settings)
+    if LABEL_NAME not in done:
+        done.append(LABEL_NAME)
+        if not template_path(LABEL_NAME).exists():
+            save_template(pickup_label_template())
+            src = settings.get("template") or "Standard"
+            copy_mapping(src if template_path(src).exists() else "Standard", LABEL_NAME)  # for the editor preview
+            added.append(LABEL_NAME)
         storage.save_settings(settings)
     return added

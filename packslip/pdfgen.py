@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable
 
@@ -11,6 +12,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas as rl_canvas
 
 from . import APP_NAME, storage
+from . import template as T
 from .layout import ascent, fit_text, inner_box, items_primitives, line_width, pdf_font
 from .delivery_list import draw_delivery_list
 from .drivers import is_pickup, make_plan
@@ -173,12 +175,12 @@ def format_delivery_date(d: dt.date) -> str:
     return f"{d:%a}, {d:%b} {d.day}, {d.year}"
 
 
-def default_output_path(sheet_path: Path, delivery: dt.date | None = None) -> Path:
+def default_output_path(sheet_path: Path, delivery: dt.date | None = None, prefix: str = "Pack Slips") -> Path:
     folder = sheet_path.parent
     if delivery:
-        stem = f"Pack Slips - {sheet_path.stem} - delivery {delivery:%Y-%m-%d}"
+        stem = f"{prefix} - {sheet_path.stem} - delivery {delivery:%Y-%m-%d}"
     else:
-        stem = f"Pack Slips - {sheet_path.stem} - {dt.date.today():%Y-%m-%d}"
+        stem = f"{prefix} - {sheet_path.stem} - {dt.date.today():%Y-%m-%d}"
     out = folder / f"{stem}.pdf"
     n = 2
     while out.exists():
@@ -207,6 +209,34 @@ def _name_key(values: dict) -> tuple:
     return (not (last or first), last, first)
 
 
+@contextmanager
+def _saving(out_path: Path):
+    """Write to a temporary file, then move it into place; friendly errors if saving fails."""
+    tmp = out_path.with_name(out_path.name + ".partial")
+    try:
+        yield tmp
+        tmp.replace(out_path)
+    except PermissionError:
+        tmp.unlink(missing_ok=True)
+        raise GenerateError(
+            f"The PDF couldn't be saved in “{out_path.parent}”. You may not have permission "
+            "to save files there, or a PDF with the same name is open."
+        ) from None
+    except OSError as e:
+        tmp.unlink(missing_ok=True)
+        raise GenerateError(f"The PDF couldn't be saved: {e.strerror or e}.") from None
+
+
+def _all_values(mapping: Mapping, sheet: Sheet, extra: dict | None) -> list[dict]:
+    """One values dict per order (orders grouped in rows mode), with `extra` added to each."""
+    out = []
+    for row in mapping.records(sheet.rows):
+        values = mapping.values_for_row(row)
+        values.update(extra or {})
+        out.append(values)
+    return out
+
+
 def generate_pdf(out_path: str | Path, template: Template, mapping: Mapping, sheet: Sheet,
                  progress: Callable[[int, int], None] | None = None, extra: dict | None = None,
                  drivers: dict[int, str] | None = None, driver_order: list[str] | None = None,
@@ -219,18 +249,12 @@ def generate_pdf(out_path: str | Path, template: Template, mapping: Mapping, she
     out_path = Path(out_path)
     w, h = template.page_size
     images = _ImageCache(storage.assets_dir())
-    tmp = out_path.with_name(out_path.name + ".partial")
-    try:
+    all_values = _all_values(mapping, sheet, extra)
+    total = len(all_values)
+    with _saving(out_path) as tmp:
         c = rl_canvas.Canvas(str(tmp), pagesize=(w, h), pageCompression=1)
         c.setTitle(f"Pack Slips – {sheet.path.stem}")
         c.setCreator(APP_NAME)
-        records = mapping.records(sheet.rows)  # one per pack slip (orders grouped in rows mode)
-        total = len(records)
-        all_values = []
-        for row in records:
-            values = mapping.values_for_row(row)
-            values.update(extra or {})
-            all_values.append(values)
         order = list(range(total))
         if drivers and any(drivers.values()):
             plan = make_plan(all_values, drivers, driver_order or [], stops)
@@ -253,17 +277,48 @@ def generate_pdf(out_path: str | Path, template: Template, mapping: Mapping, she
             if progress:
                 progress(n, total)
         c.save()
-        tmp.replace(out_path)
-    except PermissionError:
-        tmp.unlink(missing_ok=True)
-        raise GenerateError(
-            f"The PDF couldn't be saved in “{out_path.parent}”. You may not have permission "
-            "to save files there, or a PDF with the same name is open."
-        ) from None
-    except OSError as e:
-        tmp.unlink(missing_ok=True)
-        raise GenerateError(f"The PDF couldn't be saved: {e.strerror or e}.") from None
     return total
+
+
+def _wanted_for_labels(values: dict, which: str) -> bool:
+    if which == "pickup":
+        return is_pickup(values)
+    if which == "delivery":
+        return not is_pickup(values)
+    return True
+
+
+def generate_labels(out_path: str | Path, template: Template, mapping: Mapping, sheet: Sheet,
+                    extra: dict | None = None) -> int:
+    """Bag labels: one page (label) per bag, for the orders the label layout is for
+    (e.g. pickups only), A-Z by last name. Returns the number of labels."""
+    out_path = Path(out_path)
+    if template.label_orders != "all" and not mapping.columns.get("fulfillment"):
+        raise GenerateError(
+            "The app can't tell pickup orders from deliveries yet: the “Delivery / Pickup” field isn't "
+            "matched to a column.\n\nClick “Remap Fields” and match it (e.g. “Fulfillment Type”).")
+    all_values = [v for v in _all_values(mapping, sheet, extra) if _wanted_for_labels(v, template.label_orders)]
+    if not all_values:
+        kind = T.LABEL_ORDERS.get(template.label_orders, "orders").lower()
+        raise GenerateError(f"There are no {kind} in this spreadsheet, so there are no bag labels to make.\n\n"
+                            "(Bag labels for pickup orders look for “pickup” in the Delivery / Pickup column.)")
+    all_values.sort(key=_name_key)
+    w, h = template.page_size
+    images = _ImageCache(storage.assets_dir())
+    labels = 0
+    with _saving(out_path) as tmp:
+        c = rl_canvas.Canvas(str(tmp), pagesize=(w, h), pageCompression=1)
+        c.setTitle(f"Bag Labels – {sheet.path.stem}")
+        c.setCreator(APP_NAME)
+        for values in all_values:
+            bags = bag_count(item_total(values), template.bag_size)
+            for bag in range(1, bags + 1):
+                values["bag"] = f"{bag}/{bags}"
+                draw_page(c, template, values, mapping, images)
+                c.showPage()
+                labels += 1
+        c.save()
+    return labels
 
 
 def render_preview_pdf(out_path: str | Path, template: Template, mapping: Mapping,

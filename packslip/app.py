@@ -22,7 +22,7 @@ from .mapping import Mapping, load_mapping, migrate_legacy_mapping, save_mapping
 from .mapping_dialog import MappingDialog
 from .datepicker import DatePicker, default_delivery_date, sheet_delivery_date
 from .pdfgen import (GenerateError, blank_line_warnings, check_ready, default_output_path, format_delivery_date,
-                     generate_pdf)
+                     generate_labels, generate_pdf)
 from .spreadsheet import Sheet, SpreadsheetError, load as load_sheet
 from .ui_common import (IS_MAC, ask_choice, ask_name, center_on, disable_combobox_wheel, make_modal, open_path,
                         reveal_path)
@@ -149,6 +149,15 @@ class App:
                                       command=self._delivery_chosen)
         self.date_picker.pack(side="left", padx=6)
         self.gen_btn.pack(fill="x")
+        label_row = ttk.Frame(outer)
+        label_row.pack(fill="x", pady=(8, 0))
+        self.label_btn = ttk.Button(label_row, text="Generate Bag Labels", command=self.generate_labels)
+        self.label_btn.pack(side="right")
+        ttk.Label(label_row, text="Bag labels:").pack(side="left")
+        self.label_var = tk.StringVar()
+        self.label_combo = ttk.Combobox(label_row, textvariable=self.label_var, state="readonly", width=24)
+        self.label_combo.pack(side="left", padx=6)
+        self.label_combo.bind("<<ComboboxSelected>>", lambda e: self._label_chosen())
         self.progress = ttk.Progressbar(outer, mode="determinate")
         self.status = ttk.Label(outer, text="", style="Muted.TLabel")
         self.status.pack(anchor="w", pady=(8, 0))
@@ -273,7 +282,7 @@ class App:
             # spreadsheet rather than switching to another layout.
             self.remap(first_time=True)
             return
-        scores = {n: self._fit(n, sheet) for n in T.list_templates() if n != current}
+        scores = {n: self._fit(n, sheet) for n in T.list_templates(T.SLIP) if n != current}
         best = max(scores, key=scores.get, default=None)
         if best is not None and scores[best] > 0:
             self._refresh_templates(best)
@@ -456,6 +465,14 @@ class App:
         want = select or self.settings.get("template")
         self.tpl_var.set(want if want in names else names[0])
         self._template_chosen()
+        labels = T.list_templates(T.LABEL)
+        self.label_combo.configure(values=labels)
+        want = self.settings.get("label_layout")
+        self.label_var.set(want if want in labels else (labels[0] if labels else ""))
+
+    def _label_chosen(self):
+        self.settings["label_layout"] = self.label_var.get()
+        storage.save_settings(self.settings)
 
     def _delivery_chosen(self, d):
         self.gen_btn.configure(text=f"Generate Pack Slips for {d:%a}, {d:%b} {d.day}")
@@ -499,28 +516,54 @@ class App:
             self.status.configure(text=self.status.cget("text") or "Load a spreadsheet to get started.")
 
     # ------------------------------------------------------------ generate
-    def _output_path(self) -> Path:
-        out = default_output_path(self.sheet.path, self.date_picker.value)
+    def _output_path(self, prefix: str = "Pack Slips") -> Path:
+        out = default_output_path(self.sheet.path, self.date_picker.value, prefix)
         if os.access(out.parent, os.W_OK):
             return out
         fallback = Path.home() / "Documents" / "Pack Slips"
         fallback.mkdir(parents=True, exist_ok=True)
-        return default_output_path(fallback / self.sheet.path.name, self.date_picker.value)
+        return default_output_path(fallback / self.sheet.path.name, self.date_picker.value, prefix)
 
-    def generate(self):
+    def _ready_to_generate(self) -> bool:
+        """A spreadsheet is loaded (re-read for last-minute edits) and its columns are matched."""
         if self.sheet is None:
             messagebox.showinfo("No spreadsheet yet", "First load this week's spreadsheet (step 1).", parent=self.root)
-            return
-        # Re-read the file so last-minute edits in Excel are included.
+            return False
         try:
             self.sheet = load_sheet(self.sheet.path, self.sheet.sheet_name)
         except SpreadsheetError as e:
             messagebox.showerror("Can't read that spreadsheet", str(e), parent=self.root)
-            return
+            return False
         if self.mapping is None or self.mapping.is_empty():
             self.remap(first_time=True)
-            if self.mapping is None or self.mapping.is_empty():
-                return
+        return self.mapping is not None and not self.mapping.is_empty()
+
+    def generate_labels(self):
+        """Bag labels for the loaded orders, using the selected pack-slip layout's column matches."""
+        name = self.label_var.get()
+        tpl = T.load_template(name) if name else None
+        if tpl is None:
+            messagebox.showinfo("No bag label layout", "There's no bag label layout yet. Make one in "
+                                "Edit Layout (Duplicate “Pickup Bag Label”).", parent=self.root)
+            return
+        if not self._ready_to_generate():
+            return
+        out = self._output_path("Bag Labels")
+        diagnostics.note("generate bag labels")
+        try:
+            labels = generate_labels(out, tpl, self.mapping, self.sheet, extra=self.delivery_values())
+        except GenerateError as e:
+            messagebox.showerror("Couldn't make the bag labels", str(e), parent=self.root)
+            return
+        self.status.configure(text=f"✓  Last run: {labels} bag label{'s' if labels != 1 else ''} saved to {out.name}",
+                              style="Ok.TLabel")
+        self._show_success(out, labels, title="Bag labels ready",
+                           detail=f"{labels} label{'s' if labels != 1 else ''}: one per bag, A–Z by last name.\n"
+                                  "On the Zebra, print at Actual size (100%), not “Fit to page”.")
+
+    def generate(self):
+        if not self._ready_to_generate():
+            return
         tpl = self._current_template()
         try:
             check_ready(tpl, self.mapping, self.sheet)
@@ -563,16 +606,17 @@ class App:
         self.status.configure(text=f"✓  Last run: {pages} pack slip{'s' if pages != 1 else ''} saved to {out.name}", style="Ok.TLabel")
         self._show_success(out, pages)
 
-    def _show_success(self, out: Path, pages: int):
+    def _show_success(self, out: Path, pages: int, title: str = "Pack slips ready", detail: str = ""):
         win = tk.Toplevel(self.root)
-        win.title("Pack slips ready")
+        win.title(title)
         win.transient(self.root)
         win.resizable(False, False)
         f = ttk.Frame(win, padding=22)
         f.pack(fill="both", expand=True)
-        ttk.Label(f, text="✓  Your pack slips are ready", font=("Helvetica", 17, "bold"),
+        ttk.Label(f, text=f"✓  Your {title.replace(' ready', '').lower()} are ready", font=("Helvetica", 17, "bold"),
                   foreground="#1E7B34").pack(anchor="w")
-        ttk.Label(f, text=f"{pages} page{'s' if pages != 1 else ''} — one per customer.").pack(anchor="w", pady=(6, 10))
+        ttk.Label(f, text=detail or f"{pages} page{'s' if pages != 1 else ''} — one per customer.",
+                  justify="left").pack(anchor="w", pady=(6, 10))
         ttk.Label(f, text="Saved as:", style="Muted.TLabel").pack(anchor="w")
         win.path_var = tk.StringVar(master=win, value=str(out))  # keep a reference or Tk shows it blank
         entry = ttk.Entry(f, textvariable=win.path_var, width=60, state="readonly")

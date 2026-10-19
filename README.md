@@ -201,6 +201,21 @@ Then:
   The pack slips after it are always A–Z by last name, then first name (orders with no name last).
 - The driver list is per week: loading a new orders file clears it.
 
+## Bag labels (Zebra roll labels)
+
+Layouts come in two kinds: **pack slips** and **bag labels** (`Template.kind`). Bag labels use the same
+loaded spreadsheet and the selected pack-slip layout's column matches; nothing extra to upload.
+
+- Main window → **Bag labels:** pick a label layout → **Generate Bag Labels**. A separate PDF,
+  `Bag Labels - <sheet> - delivery <date>.pdf`, one page per label, page size = label size.
+- Built-in **Pickup Bag Label** (added once on update): 2.25 × 1 in, "Aguilera, Megan" / "Bag 2/3".
+- Edit Layout settings for label layouts: label size (2.25 × 1, 2.25 × 1.25, 4 × 2, 4 × 6 in),
+  **Labels for** (Pickup / Delivery / All orders), **Max items per bag** (placeholder 10; 0 = one label per order).
+- Labels are A–Z by last name, each customer's bags together. Pickups are found by "pickup" in the
+  Delivery / Pickup column; if that column isn't matched, the app says so.
+- New field **Last, First Name** (`last_first`). Variations: Duplicate the label layout in Edit Layout.
+- Print on the Zebra at **Actual size (100%)**.
+
 ## Real spreadsheet format
 
 The weekly Google Sheet (downloaded as .xlsx) has **one row per customer** and **one column per
