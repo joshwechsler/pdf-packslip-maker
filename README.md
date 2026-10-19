@@ -206,7 +206,7 @@ Then:
 Layouts come in two kinds: **pack slips** and **bag labels** (`Template.kind`). Bag labels use the same
 loaded spreadsheet and the selected pack-slip layout's column matches; nothing extra to upload.
 
-- Main window → **Bag labels:** pick a label layout → **Generate Bag Labels**. A separate PDF,
+- Main window → **Bag labels:** pick a label layout → **Generate Bag Labels** (**Edit Label…** opens it in the editor). A separate PDF,
   `Bag Labels - <sheet> - delivery <date>.pdf`, one page per label, page size = label size.
 - Built-in **Pickup Bag Label** (added once on update): 2.25 × 1 in, "Aguilera, Megan" / "Bag 2/3".
 - Edit Layout settings for label layouts: label size (2.25 × 1, 2.25 × 1.25, 4 × 2, 4 × 6 in),

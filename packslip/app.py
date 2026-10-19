@@ -159,12 +159,14 @@ class App:
         self.gen_btn.pack(fill="x")
         label_row = ttk.Frame(outer)
         label_row.pack(fill="x", pady=(8, 0))
+        # Buttons first so they keep their size; the dropdown takes what's left.
         self.label_btn = ttk.Button(label_row, text="Generate Bag Labels", command=self.generate_labels)
         self.label_btn.pack(side="right")
+        ttk.Button(label_row, text="Edit Label…", command=self.edit_label).pack(side="right", padx=6)
         ttk.Label(label_row, text="Bag labels:").pack(side="left")
         self.label_var = tk.StringVar()
-        self.label_combo = ttk.Combobox(label_row, textvariable=self.label_var, state="readonly", width=24)
-        self.label_combo.pack(side="left", padx=6)
+        self.label_combo = ttk.Combobox(label_row, textvariable=self.label_var, state="readonly", width=12)
+        self.label_combo.pack(side="left", padx=(6, 0), fill="x", expand=True)
         self.label_combo.bind("<<ComboboxSelected>>", lambda e: self._label_chosen())
         self.progress = ttk.Progressbar(outer, mode="determinate")
         self.status = ttk.Label(outer, text="", style="Muted.TLabel")
@@ -468,15 +470,19 @@ class App:
         self._refresh_driver_status()
 
     def _refresh_templates(self, select: str | None = None):
+        """Reload both layout lists. `select` (e.g. the layout the editor closed on) is chosen in
+        whichever list it belongs to; the other list keeps its choice."""
         names = T.ensure_default_template()
+        labels = T.list_templates(T.LABEL)
         self.tpl_combo.configure(values=names)
-        want = select or self.settings.get("template")
+        want = select if select in names else self.settings.get("template")
         self.tpl_var.set(want if want in names else names[0])
         self._template_chosen()
-        labels = T.list_templates(T.LABEL)
         self.label_combo.configure(values=labels)
-        want = self.settings.get("label_layout")
+        want = select if select in labels else self.settings.get("label_layout")
         self.label_var.set(want if want in labels else (labels[0] if labels else ""))
+        if self.label_var.get() != self.settings.get("label_layout"):
+            self._label_chosen()
 
     def _label_chosen(self):
         self.settings["label_layout"] = self.label_var.get()
@@ -510,14 +516,21 @@ class App:
     def _current_template(self) -> T.Template:
         return T.load_template(self.tpl_var.get()) or T.default_template(self.tpl_var.get() or "Standard")
 
-    def edit_layout(self):
+    def edit_layout(self, name: str | None = None):
+        """Open the layout editor on `name` (default: the selected pack-slip layout)."""
+        name = name or self.tpl_var.get()
         if getattr(self, "_designer", None) is not None and self._designer.winfo_exists():
+            self._designer._switch_template(name)
             self._designer.lift()
             return
-        mapping = load_mapping(self.tpl_var.get()) or Mapping()
-        self._designer = Designer(self.root, self.tpl_var.get(), mapping, self.sheet,
+        mapping = load_mapping(name) or Mapping()
+        self._designer = Designer(self.root, name, mapping, self.sheet,
                                   extra_values=self.delivery_values,
-                                  on_close=lambda name: self._refresh_templates(name))
+                                  on_close=lambda closed: self._refresh_templates(closed))
+
+    def edit_label(self):
+        if self.label_var.get():
+            self.edit_layout(self.label_var.get())
 
     def _refresh_generate_state(self):
         if self.sheet is None:
