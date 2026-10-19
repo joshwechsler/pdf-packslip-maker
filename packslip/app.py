@@ -47,6 +47,14 @@ def make_root() -> tuple[tk.Tk, bool]:
     return tk.Tk(), False
 
 
+def _wrapping_label(parent) -> ttk.Label:
+    """A status label that fills the space left in its row and wraps to fit it."""
+    label = ttk.Label(parent, text="", style="Muted.TLabel", justify="left")
+    label.pack(side="left", fill="x", expand=True, padx=(0, 8))
+    label.bind("<Configure>", lambda e: label.configure(wraplength=max(e.width, 50)))
+    return label
+
+
 class App:
     def __init__(self, root: tk.Tk, dnd: bool):
         self.root = root
@@ -129,14 +137,14 @@ class App:
 
         row2 = ttk.Frame(outer)
         row2.pack(fill="x", pady=(6, 0))
-        self.map_status = ttk.Label(row2, text="", style="Muted.TLabel")
-        self.map_status.pack(side="left")
+        # Buttons are packed before the status text so a long layout or file name wraps the text
+        # instead of squeezing the button off the window.
         ttk.Button(row2, text="Remap Fields…", command=self.remap).pack(side="right")
+        self.map_status = _wrapping_label(row2)
         row3 = ttk.Frame(outer)
         row3.pack(fill="x", pady=(6, 0))
-        self.driver_status = ttk.Label(row3, text="", style="Muted.TLabel")
-        self.driver_status.pack(side="left")
         ttk.Button(row3, text="Driver List…", command=self.choose_route_file).pack(side="right")
+        self.driver_status = _wrapping_label(row3)
 
         # Step 3 — generate
         ttk.Label(outer, text="3.  Pick the delivery date and make the PDF", style="Step.TLabel").pack(
