@@ -156,6 +156,19 @@ def check_ready(template: Template, mapping: Mapping, sheet: Sheet) -> None:
         )
 
 
+def blank_line_warnings(template: Template, mapping: Mapping, drivers_matched: int) -> list[str]:
+    """Lines on the layout that will print empty on every slip because a setting is missing."""
+    used = template.used_field_keys(mapping)
+    out = []
+    if "bag" in used and template.bag_size <= 0:
+        out.append("This layout has a Bag line, but Max items per bag is 0 (off), so bag numbers will be "
+                   "blank. Set it in Edit Layout (e.g. 10).")
+    if used & {"driver", "driver_stop"} and drivers_matched <= 0:
+        out.append("This layout has a Driver line, but no driver list is loaded (or none of its orders "
+                   "matched), so driver names will be blank. Load the orders first, then click Driver List.")
+    return out
+
+
 def format_delivery_date(d: dt.date) -> str:
     return f"{d:%a}, {d:%b} {d.day}, {d.year}"
 

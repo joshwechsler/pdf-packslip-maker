@@ -21,7 +21,8 @@ from .routes import RouteColumns, guess_route_columns, join_routes, looks_like_r
 from .mapping import Mapping, load_mapping, migrate_legacy_mapping, save_mapping
 from .mapping_dialog import MappingDialog
 from .datepicker import DatePicker, default_delivery_date, sheet_delivery_date
-from .pdfgen import GenerateError, check_ready, default_output_path, format_delivery_date, generate_pdf
+from .pdfgen import (GenerateError, blank_line_warnings, check_ready, default_output_path, format_delivery_date,
+                     generate_pdf)
 from .spreadsheet import Sheet, SpreadsheetError, load as load_sheet
 from .ui_common import (IS_MAC, ask_choice, ask_name, center_on, disable_combobox_wheel, make_modal, open_path,
                         reveal_path)
@@ -527,6 +528,10 @@ class App:
             if messagebox.askyesno("Can't make the pack slips yet", f"{e}\n\nOpen “Remap Fields” now?",
                                    parent=self.root, icon="warning"):
                 self.remap()
+            return
+        warnings = blank_line_warnings(tpl, self.mapping, len(self._driver_assignment()))
+        if warnings and ask_choice(self.root, "Some lines will be blank", "\n\n".join(warnings),
+                                   ["Generate Anyway", "Cancel"]) != 0:
             return
 
         out = self._output_path()

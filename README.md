@@ -42,6 +42,8 @@ Layout dropdown (the selected layout doesn't change; it copies the current layou
 - The **Bag** field prints "1/2", "2/2"… (label it "Bag:"). Total Items shows the whole order on every slip.
 - Extra bag slips leave out every item ticked **First bag only** (on the Landscape layout: the Order
   Details box, its title and the item list), so only the right-hand column prints.
+- Before generating, the app warns if the layout has a Bag line but bags are off, or a Driver line but no
+  driver list matched (Generate Anyway / Cancel).
 - Layouts saved before this feature are not changed: set the number, add the Bag field and tick
   First bag only yourself.
 

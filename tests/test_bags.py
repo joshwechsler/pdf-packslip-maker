@@ -53,3 +53,17 @@ def test_bag_settings_round_trip():
     again = T.load_template("X")
     assert again.bag_size == 10 and again.elements[0]["first_bag_only"]
     assert T.Template.from_json({"name": "Old"}).bag_size == 0
+
+
+def test_blank_line_warnings():
+    from packslip.pdfgen import blank_line_warnings
+    m = Mapping()
+    t = T.landscape_template()                                    # has Bag and Driver lines, bags on
+    assert blank_line_warnings(t, m, drivers_matched=3) == []
+    t.bag_size = 0
+    w = blank_line_warnings(t, m, drivers_matched=0)
+    assert len(w) == 2 and "Max items per bag" in w[0] and "driver list" in w[1]
+    assert blank_line_warnings(T.default_template(), m, drivers_matched=0)[0].startswith("This layout has a Driver")
+    plain = T.default_template()
+    plain.elements = [e for e in plain.elements if e.get("field") not in ("driver", "driver_stop")]
+    assert blank_line_warnings(plain, m, drivers_matched=0) == []  # no Driver/Bag line: nothing to warn about
