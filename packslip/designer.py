@@ -24,11 +24,16 @@ from .mapping import COMPUTED_KEYS, ITEMS_KEY, Mapping, copy_mapping, delete_map
 from .drivers import is_pickup
 from .pdfgen import item_total, bag_count, render_preview_pdf
 from .spreadsheet import Sheet
-from .ui_common import ColorSwatch, ask_name, open_path
+from .snapping import snap_edge, snap_move, targets
+from .ui_common import IS_MAC, ColorSwatch, ask_name, open_path
 
 MARGIN = 24          # px around the page on the canvas
 HANDLE = 7           # px, resize handle size
 SELECT = "#2F80ED"
+SNAP_GUIDE = "#E5398F"    # snap-to-align guide lines
+SNAP_PX = 5          # how close (screen pixels) counts as lined up
+# Hold Option (Mac) / Alt to drag without snapping. Tk reports Option as Mod2 on macOS, Alt as Mod1 elsewhere.
+FREE_MOVE_MASK = 0x0010 if IS_MAC else 0x0008
 GUIDE = "#9DB7D5"
 PT_PER_IN = 72.0
 
@@ -48,6 +53,7 @@ class Designer(tk.Toplevel):
         self.selected: str | None = None
         self.dirty = False
         self._drag = None
+        self._guides: tuple[list[float], list[float]] = ([], [])  # snap guides shown while dragging
         self._syncing = False
         self._fonts: dict = {}
         self._images: dict = {}
@@ -178,8 +184,9 @@ class Designer(tk.Toplevel):
         self.props = ttk.Frame(p)
         self.props.pack(fill="both", expand=True)
 
-        help_text = ("Drag items to move them. Drag a corner to resize. Arrow keys nudge "
-                     "(hold Shift for bigger steps). Delete removes the selected item.")
+        help_text = ("Drag items to move them. Drag a corner to resize. Items snap into line with other "
+                     f"items (pink guide); hold {'⌥ Option' if IS_MAC else 'Alt'} to move freely. Arrow keys "
+                     "nudge (hold Shift for bigger steps). Delete removes the selected item.")
         ttk.Label(p, text=help_text, foreground="#666666", wraplength=290).pack(side="bottom", anchor="w", pady=(8, 0))
 
     # ------------------------------------------------------- preview values
@@ -333,6 +340,11 @@ class Designer(tk.Toplevel):
             for hx, hy in self._handles(sel).values():
                 cv.create_rectangle(hx - HANDLE / 2, hy - HANDLE / 2, hx + HANDLE / 2, hy + HANDLE / 2,
                                     fill="#FFFFFF", outline=SELECT, width=1.5)
+        pw, ph = self.tpl.page_size
+        for gx in self._guides[0]:
+            cv.create_line(*self._c(gx, 0), *self._c(gx, ph), fill=SNAP_GUIDE, width=2)
+        for gy in self._guides[1]:
+            cv.create_line(*self._c(0, gy), *self._c(pw, gy), fill=SNAP_GUIDE, width=2)
         self._tk_images = self._tk_images[-60:]
         self._update_preview_label()
 
@@ -415,27 +427,40 @@ class Designer(tk.Toplevel):
         dx = round((e.x - sx) / self.scale)
         dy = round((e.y - sy) / self.scale)
         pw, ph = self.tpl.page_size
+        snap = not (e.state & FREE_MOVE_MASK)
+        xs, ys = targets(self.tpl.elements, el["id"], pw, ph) if snap else ([], [])
+        tol = SNAP_PX / self.scale
+        gx = gy = None
         if mode == "move":
-            el["x"] = float(min(max(orig["x"] + dx, -orig["w"] + 8), pw - 8))
-            el["y"] = float(min(max(orig["y"] + dy, -orig["h"] + 8), ph - 8))
+            x = float(min(max(orig["x"] + dx, -orig["w"] + 8), pw - 8))
+            y = float(min(max(orig["y"] + dy, -orig["h"] + 8), ph - 8))
+            el["x"], el["y"], gx, gy = snap_move(x, y, orig["w"], orig["h"], xs, ys, tol)
         else:
             x0, y0 = orig["x"], orig["y"]
             x1, y1 = orig["x"] + orig["w"], orig["y"] + orig["h"]
             if "w" in handle:
-                x0 = min(x0 + dx, x1 - 4)
+                x0, gx = snap_edge(min(x0 + dx, x1 - 4), xs, tol)
+                x0 = min(x0, x1 - 4)
             if "e" in handle:
-                x1 = max(x1 + dx, x0 + 4)
+                x1, gx = snap_edge(max(x1 + dx, x0 + 4), xs, tol)
+                x1 = max(x1, x0 + 4)
             if "n" in handle:
-                y0 = min(y0 + dy, y1 - 1)
+                y0, gy = snap_edge(min(y0 + dy, y1 - 1), ys, tol)
+                y0 = min(y0, y1 - 1)
             if "s" in handle:
-                y1 = max(y1 + dy, y0 + 1)
+                y1, gy = snap_edge(max(y1 + dy, y0 + 1), ys, tol)
+                y1 = max(y1, y0 + 1)
             el["x"], el["y"], el["w"], el["h"] = float(x0), float(y0), float(x1 - x0), float(y1 - y0)
+        self._guides = ([gx] if gx is not None else [], [gy] if gy is not None else [])
         self._mark_dirty()
         self._sync_geometry_vars()
         self.redraw()
 
     def _on_release(self, e):
         self._drag = None
+        if self._guides != ([], []):
+            self._guides = ([], [])
+            self.redraw()
 
     def _nudge(self, dx, dy, step):
         el = self.tpl.find(self.selected) if self.selected else None

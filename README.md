@@ -23,6 +23,10 @@ The designer preview and the PDF use the same text-fitting code (reportlab font
 metrics), so lines wrap in the same places on screen and on paper. Long values shrink
 to fit their box, then truncate with "...".
 
+**Snap-to-align** (`packslip/snapping.py`): while dragging or resizing, a box's edges and centre snap to other
+boxes' edges and centres and to the page's 0.5 in margins and centre (within 5 screen pixels), with a pink guide
+line. Hold ⌥ Option (Alt elsewhere) to move freely; arrow-key nudges never snap.
+
 **Designer extras:** an **Item List** element (tick box, quantity, dish name), text items accept `{Field Name}` placeholders (for example
 `{City}, {State} {Zip}`), and field items can split a cell into one line per item
 (at newlines, commas, or semicolons) with optional bullets. Page sizes: Letter,
