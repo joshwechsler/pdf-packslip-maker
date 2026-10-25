@@ -148,6 +148,8 @@ class Template:
         if t.kind == SLIP:
             _upgrade_pickup_and_access(t)
             _upgrade_driver(t)
+        else:
+            _upgrade_pickup_bag_size(t)
         return t
 
     def copy(self, name: str | None = None) -> "Template":
@@ -254,6 +256,16 @@ def _upgrade_driver(t: "Template") -> None:
                                        size=12, bold=True, align="right"))
 
 
+def _upgrade_pickup_bag_size(t: "Template") -> None:
+    """Pickup bags hold 6 items. Labels still on the first version's placeholder (10) switch once;
+    a number the Operator chose is kept."""
+    if "pickup_bag_6" in t.upgrades:
+        return
+    t.upgrades.append("pickup_bag_6")
+    if t.label_orders == "pickup" and t.bag_size == 10:
+        t.bag_size = 6
+
+
 def default_template(name: str = "Standard") -> Template:
     """Starting layout, built around the weekly order sheet's columns."""
     E = make_element
@@ -338,8 +350,8 @@ def pickup_label_template(name: str = LABEL_NAME) -> Template:
         E("field", 6, 11, 150, 26, field="last_first", size=17, bold=True, align="center", color="#000000"),
         E("field", 6, 42, 150, 20, field="bag", label="Bag", size=15, align="center", color="#000000"),
     ]
-    return Template(name=name, page="Label (2.25 × 1 in)", elements=els, upgrades=["pickup_access", "driver"],
-                    bag_size=10, kind=LABEL, label_orders="pickup")
+    return Template(name=name, page="Label (2.25 × 1 in)", elements=els, upgrades=["pickup_access", "driver", "pickup_bag_6"],
+                    bag_size=6, kind=LABEL, label_orders="pickup")
 
 
 # -- persistence -------------------------------------------------------------
