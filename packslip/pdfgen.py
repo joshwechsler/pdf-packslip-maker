@@ -168,6 +168,10 @@ def blank_line_warnings(template: Template, mapping: Mapping, drivers_matched: i
     if used & {"driver", "driver_stop"} and drivers_matched <= 0:
         out.append("This layout has a Driver line, but no driver list is loaded (or none of its orders "
                    "matched), so driver names will be blank. Load the orders first, then click Driver List.")
+    if used & {"ship_to", "ship_to_heading"} and not mapping.columns.get("fulfillment"):
+        out.append("This layout has an Address / Pickup Location line, but the Delivery / Pickup field isn't "
+                   "matched to a column, so pickup orders will look like deliveries. Click Remap Fields and "
+                   "match it (e.g. “Fulfillment Type”).")
     return out
 
 

@@ -57,7 +57,7 @@ def test_bag_settings_round_trip():
 
 def test_blank_line_warnings():
     from packslip.pdfgen import blank_line_warnings
-    m = Mapping()
+    m = Mapping(columns={"fulfillment": "Fulfillment Type"})   # pickups can be told apart
     t = T.landscape_template()                                    # has Bag and Driver lines, bags on
     assert blank_line_warnings(t, m, drivers_matched=3) == []
     t.bag_size = 0

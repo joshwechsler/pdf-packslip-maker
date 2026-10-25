@@ -47,6 +47,12 @@ Layout dropdown (the selected layout doesn't change; it copies the current layou
 - Layouts saved before this feature are not changed: set the number, add the Bag field and tick
   First bag only yourself.
 
+**Address / Pickup Location** and **Address Heading** fields: deliveries show the address under
+"DELIVERY ADDRESS"; orders whose Delivery / Pickup value contains "pickup" show the pickup location
+(e.g. "Chapel Haven- RESIDENTS ONLY", exactly as in the sheet) under "PICKUP LOCATION". A store location
+on a delivery (where it ships from) is never shown. The built-in Landscape layout uses them; saved layouts
+swap them in via Edit Layout. Generate warns if Delivery / Pickup isn't matched.
+
 **First Name / Last Name** fields: matched to their own columns if the sheet has them, otherwise split
 from Customer Name ("Jane Q. Smith" → "Jane Q." / "Smith"; "Smith, Jane" works too).
 

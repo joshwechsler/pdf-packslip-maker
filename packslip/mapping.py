@@ -73,6 +73,9 @@ COMPUTED_FIELDS = [
     {"key": "driver_stop", "label": "Driver & Stop", "sample": "Mike · Stop 3"},
     {"key": "bag", "label": "Bag", "sample": "1/2"},
     {"key": "last_first", "label": "Last, First Name", "sample": "Smith, Jane"},
+    # Deliveries: the address. Pickups (Delivery / Pickup says "pickup"): the pickup location.
+    {"key": "ship_to", "label": "Address / Pickup Location", "sample": "123 Main St, Unit 4, Springfield, CT 06401"},
+    {"key": "ship_to_heading", "label": "Address Heading", "sample": "DELIVERY ADDRESS"},
 ]
 COMPUTED_KEYS = {f["key"] for f in COMPUTED_FIELDS}
 
@@ -334,6 +337,10 @@ class Mapping:
             # A store "location" on a delivery order is where it ships from, not a pickup spot.
             if re.search(r"deliver|ship", vals["fulfillment"], re.I):
                 vals["pickup_location"] = vals["pickup_time"] = ""
+        if re.search(r"pick\s*up", vals.get("fulfillment", ""), re.I):
+            vals["ship_to_heading"], vals["ship_to"] = "PICKUP LOCATION", vals.get("pickup_location") or "Pickup"
+        else:  # a store location on a delivery is where it ships from, so it's never shown
+            vals["ship_to_heading"], vals["ship_to"] = "DELIVERY ADDRESS", vals.get("address", "")
         items = self.item_rows(row)
         vals[ITEMS_KEY] = items
         if self.items_mode in ("columns", "rows"):

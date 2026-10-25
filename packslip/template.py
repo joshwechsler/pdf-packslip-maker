@@ -307,10 +307,9 @@ def landscape_template(name: str = LANDSCAPE_NAME) -> Template:
         E("box", 50, 70, 344, 1, fill="#000000", first_bag_only=True),
         E("items", 50, 78, 344, 486, size=12, first_bag_only=True),
         # Right: where it goes
-        E("text", 432, 40, 324, 14, text="DELIVERY ADDRESS", size=9, bold=True, color=A),
-        E("field", 432, 55, 324, 52, field="address", size=15, bold=True),
+        E("field", 432, 40, 324, 14, field="ship_to_heading", size=9, bold=True, color=A),
+        E("field", 432, 55, 324, 52, field="ship_to", size=15, bold=True),
         E("field", 432, 109, 324, 16, field="access_code", label="Access:", size=11),
-        E("field", 432, 127, 324, 16, field="pickup_location", label="Pickup at:", size=11),
         E("field", 432, 127, 324, 16, field="time_window", label="Window:", size=11, color="#555555"),
         E("text", 432, 152, 324, 14, text="DELIVERY INSTRUCTIONS", size=9, bold=True, color=A),
         E("field", 432, 167, 324, 150, field="notes", size=13),
