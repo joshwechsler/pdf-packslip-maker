@@ -9,6 +9,15 @@ Python, terminal, or subscriptions needed on the Operator's Mac.
 - **Download the app:** [latest release](https://github.com/joshwechsler/pdf-packslip-maker/releases/latest)
   → `Packs-Be-Slippin-mac.zip`. Installed apps update themselves (see *Updates* below).
 
+## The main window
+
+- **Three file boxes:** Orders CSV (pack slips + bag labels), Driver list (optional), Meal label CSV. Drop a file on
+  its box or use **Browse…**; a file dropped anywhere else on the window is sorted into the right box.
+- **Delivery date**, then one row per job: **Pack slips** (template, *Remap Fields*), **Bag labels** (template),
+  **Meal labels** (custom and regular templates, *Sort & filter*), each with its **Generate** button. A Generate
+  button is greyed out until the file it needs is loaded.
+- **Templates** (top right) opens the template builder; **Building:** picks Pack Slips, Bag Labels or Meal Labels.
+
 ## How it works
 
 | Stage | Module | SRS |
@@ -40,7 +49,7 @@ Layout dropdown (the selected layout doesn't change; it copies the current layou
 - Bottom right: **Total Items** with the count in a box, then a bordered panel with last name (large),
   first name, delivery date and driver.
 
-**Bags** (per layout, Edit Layout → *Max items per bag*, 0 = off; the built-in Landscape layout starts at 10):
+**Bags** (per layout, Templates → *Max items per bag*, 0 = off; the built-in Landscape layout starts at 10):
 - A delivery order with more items than that gets one slip per bag, right after each other:
   1–10 items = 1 slip, 11–20 = 2, 21–30 = 3. Pickup orders always get one slip.
 - The **Bag** field prints "1/2", "2/2"… (label it "Bag:"). Total Items shows the whole order on every slip.
@@ -55,7 +64,7 @@ Layout dropdown (the selected layout doesn't change; it copies the current layou
 "DELIVERY ADDRESS"; orders whose Delivery / Pickup value contains "pickup" show the pickup location
 (e.g. "Chapel Haven- RESIDENTS ONLY", exactly as in the sheet) under "PICKUP LOCATION". A store location
 on a delivery (where it ships from) is never shown. The built-in Landscape layout uses them; saved layouts
-swap them in via Edit Layout. Generate warns if Delivery / Pickup isn't matched.
+swap them in via Templates. Generate warns if Delivery / Pickup isn't matched.
 
 **First Name / Last Name** fields: matched to their own columns if the sheet has them, otherwise split
 from Customer Name ("Jane Q. Smith" → "Jane Q." / "Smith"; "Smith, Jane" works too).
@@ -165,7 +174,7 @@ layout with its own columns, logo, brand colors and remembered delivery weekday.
 - On loading a spreadsheet, the app keeps the selected layout if its matches fit. Otherwise it
   switches to the layout that fits best (`Mapping.fit_score`).
 - If nothing fits, it asks: "different business → new layout" or "headings changed → re-match".
-- In Edit Layout, **Duplicate** copies a layout *with* its matches (a variation for the same
+- In Templates, **Duplicate** copies a layout *with* its matches (a variation for the same
   business). **New** starts with no matches and no logo (a different business).
 - The old app-wide `mapping.json` is copied to every existing layout on first launch.
 
@@ -206,8 +215,8 @@ Drivers aren't assigned in the app. They come from a separate **driver list** (.
 a driver name and an order number or customer name (other columns are ignored).
 
 1. Load the week's orders.
-2. Click **Driver List…**, or drag the file in after the orders. It is recognised by having a driver
-   column and no item columns.
+2. Drop it on the **Driver list** box (or its **Browse…**). Dropped elsewhere on the window, it is
+   recognised by having a driver column and no item columns.
 3. Check the columns on the small screen (Order number, Customer name, Driver name, optional Stop #).
    It previews how many orders matched, lists the driver names found, and names the orders that didn't match.
    Columns about the driver but not their name ("Driver Instructions", phone, notes…) are never guessed. The choices are remembered
@@ -234,17 +243,17 @@ loaded spreadsheet and the selected pack-slip layout's column matches; nothing e
 - Main window → **Bag labels:** pick a label layout → **Generate Bag Labels** (**Edit Label…** opens it in the editor). A separate PDF,
   `Bag Labels - <sheet> - delivery <date>.pdf`, one page per label, page size = label size.
 - Built-in **Pickup Bag Label** (added once on update): 2.25 × 1 in, "Aguilera, Megan" / "Bag 2/3".
-- Edit Layout settings for label layouts: label size (2.25 × 1, 2.25 × 1.25, 4 × 2, 4 × 6 in),
+- Templates settings for label layouts: label size (2.25 × 1, 2.25 × 1.25, 4 × 2, 4 × 6 in),
   **Labels for** (Pickup / Delivery / All orders), **Max items per bag** (6 for pickups; 0 = one label per order).
 - Labels are A–Z by last name, each customer's bags together. Pickups are found by "pickup" in the
   Delivery / Pickup column; if that column isn't matched, the app says so.
-- New field **Last, First Name** (`last_first`). Variations: Duplicate the label layout in Edit Layout.
+- New field **Last, First Name** (`last_first`). Variations: Duplicate the label layout in Templates.
 - Print on the Zebra at **Actual size (100%)**.
 
 ## Meal labels (one per container)
 
-**Meal Labels…** on the main window (or drop the *Fulfillment Label Data* CSV on it) opens the Meal Labels
-window. The export has one row per container: Customer, Product, Variant, Modifiers, Price, Calories, Protein,
+Drop the *Fulfillment Label Data* CSV on the **Meal label CSV** box, pick the Custom and Regular templates,
+then **Generate Meal Labels**. The export has one row per container: Customer, Product, Variant, Modifiers, Price, Calories, Protein,
 Carbs, Fat, How to Prepare (`packslip/meal_labels.py`, deterministic, nothing skipped).
 
 - **Custom meals** (Product starts with "Custom"): Modifiers are split at semicolons and "(1x)" removed.
@@ -286,5 +295,5 @@ menu item** with the quantity in the cell, then a `TOTALS` row:
 | Item | Status |
 | --- | --- |
 | Real spreadsheet headers | ✅ Received. Default fields and layout are built around them |
-| Logo + brand colors | ✅ Logo: black "MEAL + PREP" wordmark (`packslip/assets/meal_prep_logo.png`, redraw with `tools/make_logo.py`), installed as the default on first run. Brand colors: black `#000000` / dark gray `#555555` to match (Edit Layout → Brand, no rebuild) |
+| Logo + brand colors | ✅ Logo: black "MEAL + PREP" wordmark (`packslip/assets/meal_prep_logo.png`, redraw with `tools/make_logo.py`), installed as the default on first run. Brand colors: black `#000000` / dark gray `#555555` to match (Templates → Brand, no rebuild) |
 | Field list for the slip | ✅ Name, address, phone, order date, items with tick boxes, total items, delivery instructions. Total Cost and Paid are matched but deliberately left off the slip |

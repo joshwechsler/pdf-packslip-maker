@@ -16,15 +16,15 @@ from . import APP_NAME, __version__, diagnostics, storage, updater
 from . import template as T
 from .designer import Designer
 from .drivers import DriverBook, customer_key
-from .meal_labels import looks_like_meal_file
-from .meal_window import MealLabelsWindow
+from . import meal_window
+from .meal_labels import filter_records, looks_like_meal_file, read_records
 from .route_dialog import RouteDialog
 from .routes import RouteColumns, guess_route_columns, join_routes, looks_like_route_file
 from .mapping import Mapping, load_mapping, migrate_legacy_mapping, save_mapping
 from .mapping_dialog import MappingDialog
 from .datepicker import DatePicker, default_delivery_date, sheet_delivery_date
 from .pdfgen import (GenerateError, blank_line_warnings, check_ready, default_output_path, format_delivery_date,
-                     generate_labels, generate_pdf)
+                     generate_labels, generate_meal_labels, generate_pdf)
 from .spreadsheet import Sheet, SpreadsheetError, load as load_sheet
 from .ui_common import (IS_MAC, ask_choice, ask_name, center_on, disable_combobox_wheel, make_modal, open_path,
                         reveal_path)
@@ -57,6 +57,61 @@ def _wrapping_label(parent) -> ttk.Label:
     return label
 
 
+class _DropBox(tk.Frame):
+    """A file box: title, hint, Browse…, and a status line once a file is loaded. Files can be dropped on it."""
+
+    def __init__(self, parent, title: str, hint: str, browse, dnd: bool):
+        super().__init__(parent, background=DROP_BG, highlightthickness=2, highlightbackground="#B7C3D3")
+        self.hint = hint
+        self.body = tk.Frame(self, background=DROP_BG)
+        self.body.pack(fill="both", expand=True, padx=10, pady=10)
+        tk.Label(self.body, text=title, background=DROP_BG, foreground="#22313F",
+                 font=("Helvetica", 13, "bold")).pack()
+        tk.Label(self.body, text=f"for {hint}", background=DROP_BG, foreground="#7F8C8D",
+                 font=("Helvetica", 10)).pack()
+        if dnd:
+            tk.Label(self.body, text="drag the file here, or", background=DROP_BG, foreground="#7F8C8D",
+                     font=("Helvetica", 10)).pack(pady=(4, 0))
+        ttk.Button(self.body, text="Browse…", command=browse).pack(pady=(6, 0))
+        self.status = tk.Label(self.body, text="", background=DROP_BG, foreground="#7F8C8D",
+                               font=("Helvetica", 10), justify="center", wraplength=160)
+        self.status.pack(pady=(6, 0))
+        self.bind("<Configure>", lambda e: self.status.configure(wraplength=max(e.width - 30, 80)))
+
+    def set_status(self, text: str, ok: bool = False):
+        self.status.configure(text=text, foreground="#1E7B34" if ok else "#7F8C8D")
+
+    def register_drop(self, on_file):
+        def dropped(event):
+            self._hover(False)
+            paths = self.tk.splitlist(event.data)
+            if paths:  # after the drag finishes: opening a dialog inside the drop can lock macOS up
+                self.after(100, lambda p=paths[0]: on_file(p))
+            return getattr(event, "action", "copy")
+
+        for w in self._all():
+            w.drop_target_register(DND_FILES)
+            w.dnd_bind("<<Drop>>", dropped)
+            w.dnd_bind("<<DropEnter>>", lambda e: self._hover(True))
+            w.dnd_bind("<<DropLeave>>", lambda e: self._hover(False))
+
+    def _all(self):
+        out, todo = [], [self]
+        while todo:
+            w = todo.pop()
+            if isinstance(w, (tk.Frame, tk.Label)):
+                out.append(w)
+            todo.extend(w.winfo_children())
+        return out
+
+    def _hover(self, on: bool):
+        bg = DROP_HOVER if on else DROP_BG
+        self.configure(highlightbackground=ACCENT if on else "#B7C3D3")
+        for w in self._all():
+            w.configure(background=bg)
+        return getattr(tk, "COPY", "copy")
+
+
 class App:
     def __init__(self, root: tk.Tk, dnd: bool):
         self.root = root
@@ -64,19 +119,19 @@ class App:
         self.sheet: Sheet | None = None
         self.mapping: Mapping | None = None  # column matches for the selected layout
         self.meal_sheet: Sheet | None = None  # the Label Data export, for meal labels
-        self._meal_window = None
         names = T.ensure_default_template()  # may record new built-in layouts in the settings
         self.settings = storage.load_settings()
         migrate_legacy_mapping(names)
         T.install_default_logo()  # refresh the built-in logo after an app update
 
         root.title(APP_NAME)
-        root.minsize(560, 520)
+        root.minsize(720, 600)
         root.report_callback_exception = self._unexpected_error
         disable_combobox_wheel(root)
         self._build()
         self._refresh_templates()
         self._refresh_mapping_status()
+        self._refresh_meal_status()
         self._refresh_generate_state()
 
         if updater.can_self_update():
@@ -90,96 +145,101 @@ class App:
     # ------------------------------------------------------------------ UI
     def _build(self):
         style = ttk.Style(self.root)
-        style.configure("Big.TButton", font=("Helvetica", 16, "bold"), padding=(20, 12))
-        style.configure("Step.TLabel", font=("Helvetica", 14, "bold"))
         style.configure("Muted.TLabel", foreground="#666666")
         style.configure("Ok.TLabel", foreground="#1E7B34")
 
-        outer = ttk.Frame(self.root, padding=22)
+        style.configure("Job.TLabel", font=("Helvetica", 13, "bold"))
+        style.configure("Link.TLabel", foreground="#1F5FAD", font=("Helvetica", 12, "underline"))
+
+        outer = ttk.Frame(self.root, padding=20)
         outer.pack(fill="both", expand=True)
 
-        ttk.Label(outer, text=APP_NAME, font=("Helvetica", 22, "bold"), foreground=ACCENT).pack(anchor="w")
-        ttk.Label(outer, text="Turn this week's order spreadsheet into printable pack slips.",
-                  style="Muted.TLabel").pack(anchor="w", pady=(0, 14))
+        head = ttk.Frame(outer)
+        head.pack(fill="x")
+        ttk.Button(head, text="Templates", command=self.open_templates).pack(side="right")
+        ttk.Label(head, text=APP_NAME, font=("Helvetica", 22, "bold"), foreground=ACCENT).pack(side="left")
+        ttk.Label(outer, text="Load this week's files, check the date, then generate.",
+                  style="Muted.TLabel").pack(anchor="w", pady=(0, 12))
 
-        # Step 1 — spreadsheet
-        ttk.Label(outer, text="1.  Load this week's spreadsheet", style="Step.TLabel").pack(anchor="w")
-        self.drop = tk.Frame(outer, background=DROP_BG, highlightthickness=2,
-                             highlightbackground="#B7C3D3", height=110)
-        self.drop.pack(fill="x", pady=(6, 4))
-        self.drop.pack_propagate(False)
-        inner = tk.Frame(self.drop, background=DROP_BG)
-        inner.place(relx=0.5, rely=0.5, anchor="center")
-        drop_text = ("Drag your spreadsheet (.xlsx or .csv) here" if self.dnd
-                     else "Choose your spreadsheet (.xlsx or .csv)")
-        self.drop_label = tk.Label(inner, text=drop_text, background=DROP_BG, foreground="#34495E",
-                                   font=("Helvetica", 14))
-        self.drop_label.pack()
-        tk.Label(inner, text="or", background=DROP_BG, foreground="#7F8C8D").pack(pady=2)
-        ttk.Button(inner, text="Browse…", command=self.browse).pack()
-        self._drop_inner = inner
-
-        sheet_row = ttk.Frame(outer)
-        sheet_row.pack(fill="x")
-        self.file_status = ttk.Label(sheet_row, text="No spreadsheet loaded yet.", style="Muted.TLabel")
-        self.file_status.pack(side="left")
-        self.sheet_var = tk.StringVar()
-        self.sheet_combo = ttk.Combobox(sheet_row, textvariable=self.sheet_var, state="readonly", width=18)
+        # Files: one box each; drop a file on a box, or anywhere on the window to have it sorted.
+        files = ttk.Frame(outer)
+        files.pack(fill="x")
+        self.boxes: dict[str, _DropBox] = {}
+        for col, (slot, title, hint) in enumerate((("orders", "Orders CSV", "pack slips + bag labels"),
+                                                   ("drivers", "Driver list", "drivers (optional)"),
+                                                   ("meals", "Meal label CSV", "meal labels"))):
+            files.columnconfigure(col, weight=1, uniform="files")
+            box = _DropBox(files, title, hint, browse=lambda s=slot: self.browse(s), dnd=self.dnd)
+            box.grid(row=0, column=col, sticky="nsew", padx=(0 if col == 0 else 8, 0))
+            self.boxes[slot] = box
+            if self.dnd:
+                box.register_drop(lambda path, s=slot: self.load_file(path, slot=s))
+        self.sheet_var = tk.StringVar()  # workbooks with several sheets: which one
+        self.sheet_combo = ttk.Combobox(self.boxes["orders"].body, textvariable=self.sheet_var, state="readonly",
+                                        width=14)
         self.sheet_combo.bind("<<ComboboxSelected>>", lambda e: self._change_sheet())
 
-        # Step 2 — layout & fields
-        ttk.Label(outer, text="2.  Check the layout", style="Step.TLabel").pack(anchor="w", pady=(18, 4))
-        row = ttk.Frame(outer)
-        row.pack(fill="x")
-        ttk.Label(row, text="Layout:").pack(side="left")
-        self.tpl_var = tk.StringVar()
-        self.tpl_combo = ttk.Combobox(row, textvariable=self.tpl_var, state="readonly", width=24)
-        self.tpl_combo.pack(side="left", padx=6)
-        self.tpl_combo.bind("<<ComboboxSelected>>", lambda e: self._template_chosen())
-        ttk.Button(row, text="Edit Layout…", command=self.edit_layout).pack(side="left")
-        ttk.Button(row, text="New Layout…", command=self.new_business_layout).pack(side="left", padx=6)
-
-        row2 = ttk.Frame(outer)
-        row2.pack(fill="x", pady=(6, 0))
-        # Buttons are packed before the status text so a long layout or file name wraps the text
-        # instead of squeezing the button off the window.
-        ttk.Button(row2, text="Remap Fields…", command=self.remap).pack(side="right")
-        self.map_status = _wrapping_label(row2)
-        row3 = ttk.Frame(outer)
-        row3.pack(fill="x", pady=(6, 0))
-        ttk.Button(row3, text="Driver List…", command=self.choose_route_file).pack(side="right")
-        self.driver_status = _wrapping_label(row3)
-
-        # Step 3 — generate
-        ttk.Label(outer, text="3.  Pick the delivery date and make the PDF", style="Step.TLabel").pack(
-            anchor="w", pady=(18, 6))
         date_row = ttk.Frame(outer)
-        date_row.pack(fill="x", pady=(0, 8))
-        ttk.Label(date_row, text="Delivery date:").pack(side="left")
-        self.gen_btn = ttk.Button(outer, text="Generate Pack Slips", style="Big.TButton", command=self.generate)
+        date_row.pack(fill="x", pady=(14, 4))
+        ttk.Label(date_row, text="Delivery date", style="Job.TLabel").pack(side="left")
         self.date_picker = DatePicker(date_row, default_delivery_date(self._usual_weekday(self.settings.get("template", ""))),
                                       command=self._delivery_chosen)
-        self.date_picker.pack(side="left", padx=6)
-        self.gen_btn.pack(fill="x")
-        label_row = ttk.Frame(outer)
-        label_row.pack(fill="x", pady=(8, 0))
-        # Buttons first so they keep their size; the dropdown takes what's left.
-        self.label_btn = ttk.Button(label_row, text="Generate Bag Labels", command=self.generate_labels)
-        self.label_btn.pack(side="right")
-        ttk.Button(label_row, text="Edit Label…", command=self.edit_label).pack(side="right", padx=6)
-        ttk.Label(label_row, text="Bag labels:").pack(side="left")
+        self.date_picker.pack(side="left", padx=10)
+
+        # One row per job: what it is, which template, a setting link, and its Generate button.
+        jobs = ttk.Frame(outer)
+        jobs.pack(fill="x", pady=(10, 0))
+        jobs.columnconfigure(1, weight=1)
+
+        def job(row, title):
+            ttk.Label(jobs, text=title, style="Job.TLabel").grid(row=row, column=0, sticky="w", pady=(8, 0),
+                                                                 padx=(0, 12))
+
+        def link(parent, text, command):
+            lbl = ttk.Label(parent, text=text, style="Link.TLabel", cursor="hand2")
+            lbl.bind("<Button-1>", lambda e: command())
+            return lbl
+
+        def combo(parent, var, on_pick, width=22):
+            c = ttk.Combobox(parent, textvariable=var, state="readonly", width=width)
+            c.bind("<<ComboboxSelected>>", lambda e: on_pick())
+            return c
+
+        job(0, "Pack slips")
+        self.tpl_var = tk.StringVar()
+        self.tpl_combo = combo(jobs, self.tpl_var, self._template_chosen)
+        self.tpl_combo.grid(row=0, column=1, sticky="w", pady=(8, 0))
+        link(jobs, "Remap Fields", self.remap).grid(row=0, column=2, sticky="e", padx=10, pady=(8, 0))
+        self.gen_btn = ttk.Button(jobs, text="Generate Pack Slips", command=self.generate, width=22)
+        self.gen_btn.grid(row=0, column=3, sticky="ew", pady=(8, 0))
+        self.map_status = ttk.Label(jobs, text="", style="Muted.TLabel")
+        self.map_status.grid(row=1, column=1, columnspan=3, sticky="w")
+
+        job(2, "Bag labels")
         self.label_var = tk.StringVar()
-        self.label_combo = ttk.Combobox(label_row, textvariable=self.label_var, state="readonly", width=12)
-        self.label_combo.pack(side="left", padx=(6, 0), fill="x", expand=True)
-        self.label_combo.bind("<<ComboboxSelected>>", lambda e: self._label_chosen())
-        meal_row = ttk.Frame(outer)
-        meal_row.pack(fill="x", pady=(8, 0))
-        ttk.Button(meal_row, text="Meal Labels…", command=self.open_meal_labels).pack(side="right")
-        ttk.Label(meal_row, text="Meal labels: one per container, from the Label Data file",
-                  style="Muted.TLabel").pack(side="left")
+        self.label_combo = combo(jobs, self.label_var, self._label_chosen)
+        self.label_combo.grid(row=2, column=1, sticky="w", pady=(8, 0))
+        self.label_btn = ttk.Button(jobs, text="Generate Bag Labels", command=self.generate_labels, width=22)
+        self.label_btn.grid(row=2, column=3, sticky="ew", pady=(8, 0))
+
+        job(3, "Meal labels")
+        meal_tpls = ttk.Frame(jobs)  # custom and regular meals each have their own template
+        meal_tpls.grid(row=3, column=1, sticky="w", pady=(8, 0))
+        self.meal_custom_var, self.meal_regular_var = tk.StringVar(), tk.StringVar()
+        self.meal_custom_combo = combo(meal_tpls, self.meal_custom_var, self._meal_layout_chosen, width=18)
+        self.meal_regular_combo = combo(meal_tpls, self.meal_regular_var, self._meal_layout_chosen, width=18)
+        for r, (text, c) in enumerate((("Custom", self.meal_custom_combo), ("Regular", self.meal_regular_combo))):
+            ttk.Label(meal_tpls, text=text, style="Muted.TLabel").grid(row=r, column=0, sticky="w", padx=(0, 6))
+            c.grid(row=r, column=1, sticky="w", pady=(0 if r == 0 else 3, 0))
+        link(jobs, "Sort & filter", self.meal_sort_filter).grid(row=3, column=2, sticky="e", padx=10, pady=(8, 0))
+        self.meal_btn = ttk.Button(jobs, text="Generate Meal Labels", command=self.generate_meal_labels, width=22)
+        self.meal_btn.grid(row=3, column=3, sticky="ew", pady=(8, 0))
+        self.meal_summary = ttk.Label(jobs, text="", style="Muted.TLabel")
+        self.meal_summary.grid(row=4, column=1, columnspan=3, sticky="w", pady=(2, 0))
+
         self.progress = ttk.Progressbar(outer, mode="determinate")
         self.status = ttk.Label(outer, text="", style="Muted.TLabel")
-        self.status.pack(anchor="w", pady=(8, 0))
+        self.status.pack(anchor="w", pady=(12, 0))
 
         footer = ttk.Frame(outer)
         footer.pack(side="bottom", fill="x")
@@ -190,24 +250,12 @@ class App:
         ttk.Button(footer, text="Show Diagnostics", command=lambda: reveal_path(diagnostics.path())).pack(
             side="left")
 
-        if self.dnd:
-            for w in (self.root, self.drop, inner, self.drop_label):
-                w.drop_target_register(DND_FILES)
-                w.dnd_bind("<<Drop>>", self._on_drop)
-                w.dnd_bind("<<DropEnter>>", lambda e: self._drop_hover(True))
-                w.dnd_bind("<<DropLeave>>", lambda e: self._drop_hover(False))
-
-    def _drop_hover(self, on: bool):
-        bg = DROP_HOVER if on else DROP_BG
-        self.drop.configure(background=bg, highlightbackground=ACCENT if on else "#B7C3D3")
-        for w in [self._drop_inner, *self._drop_inner.winfo_children()]:
-            if isinstance(w, (tk.Frame, tk.Label)):
-                w.configure(background=bg)
-        return getattr(tk, "COPY", "copy")
+        if self.dnd:  # dropped anywhere else on the window: sort it into the right box
+            self.root.drop_target_register(DND_FILES)
+            self.root.dnd_bind("<<Drop>>", self._on_drop)
 
     # ------------------------------------------------------- spreadsheets
     def _on_drop(self, event):
-        self._drop_hover(False)
         paths = self.root.tk.splitlist(event.data)
         if paths:
             # Let macOS finish the drag before opening any windows: showing a dialog from
@@ -220,26 +268,42 @@ class App:
         if paths:
             self.root.after(10, lambda: self.load_file(paths[0]))
 
-    def browse(self):
-        initial = self.settings.get("last_dir") or str(Path.home())
+    def browse(self, slot: str = "orders"):
+        titles = {"orders": "Choose this week's orders file", "drivers": "Choose the driver list",
+                  "meals": "Choose the meal label file (Label Data)"}
         path = filedialog.askopenfilename(
-            parent=self.root, title="Choose this week's spreadsheet", initialdir=initial,
+            parent=self.root, title=titles[slot], initialdir=self.settings.get("last_dir") or str(Path.home()),
             filetypes=[("Spreadsheets", "*.xlsx *.xlsm *.csv"), ("All files", "*.*")])
         if path:
-            self.load_file(path)
+            self.load_file(path, slot=slot)
 
-    def load_file(self, path, sheet_name=None):
+    def load_file(self, path, sheet_name=None, slot: str | None = None):
+        """Load a file into a box: "orders", "drivers" or "meals". With no slot (dropped elsewhere on
+        the window, or opened from the Dock), the file goes to whichever box it looks like it belongs in."""
         path = Path(path)
-        diagnostics.note(f"load spreadsheet ({path.suffix})")
+        diagnostics.note(f"load spreadsheet ({path.suffix}) into {slot or 'auto'}")
         try:
             sheet = load_sheet(path, sheet_name)
         except SpreadsheetError as e:
             messagebox.showerror("Can't read that spreadsheet", str(e), parent=self.root)
             return
-        if looks_like_meal_file(sheet):  # the Label Data export goes to Meal Labels, not the pack slips
-            self.open_meal_labels(sheet)
+        if slot == "meals" or (slot is None and looks_like_meal_file(sheet)):
+            self._use_meal_sheet(sheet)
             return
-        if self.sheet is not None and self.mapping is not None and looks_like_route_file(sheet) and \
+        if slot == "drivers":
+            if not self._all_values():
+                messagebox.showinfo("Load the orders first",
+                                    "Load this week's orders file first, then the driver list.", parent=self.root)
+                return
+            self.load_route_file(path, sheet)
+            return
+        if slot == "orders" and looks_like_meal_file(sheet):
+            if ask_choice(self.root, "Meal label file?", f"“{path.name}” looks like the meal label file "
+                          "(Label Data), not an orders file.",
+                          ["Use it for meal labels", "Load it as orders anyway"]) == 0:
+                self._use_meal_sheet(sheet)
+                return
+        if slot is None and self.sheet is not None and self.mapping is not None and looks_like_route_file(sheet) and \
                 self._fit(self.tpl_var.get(), sheet) <= 0:
             choice = ask_choice(self.root, "Driver list?",
                                 f"“{path.name}” looks like a driver list (it has a driver column but no "
@@ -258,7 +322,7 @@ class App:
         if len(sheet.sheet_names) > 1:
             self.sheet_combo.configure(values=sheet.sheet_names)
             self.sheet_var.set(sheet.sheet_name)
-            self.sheet_combo.pack(side="right")
+            self.sheet_combo.pack(pady=(4, 0))
         else:
             self.sheet_combo.pack_forget()
         self.status.configure(text="")
@@ -282,10 +346,8 @@ class App:
         if self.sheet is None:
             return
         n = self.slip_count()
-        text = f"✓  {self.sheet.path.name}  —  {n} {'order' if self.mapping and self.mapping.items_mode == 'rows' else 'customer'}{'s' if n != 1 else ''}"
-        if self.mapping and self.mapping.items_mode == "rows":
-            text += f" ({len(self.sheet.rows)} item rows)"
-        self.file_status.configure(text=text, style="Ok.TLabel")
+        what = "order" if self.mapping and self.mapping.items_mode == "rows" else "customer"
+        self.boxes["orders"].set_status(f"✓ {self.sheet.path.name}\n{n} {what}{'s' if n != 1 else ''}", ok=True)
 
     def _fit(self, name: str, sheet: Sheet) -> int:
         m = load_mapping(name)
@@ -453,16 +515,16 @@ class App:
         self.stop_by_key = {customer_key(values[i]): n for i, n in res.stops.items()}
 
     def _refresh_driver_status(self):
-        if not hasattr(self, "driver_status"):
+        if not hasattr(self, "boxes"):
             return
         values = self._all_values()
         if not values or getattr(self, "route_sheet", None) is None:
-            self.driver_status.configure(text="Drivers: no driver list yet (optional)")
+            self.boxes["drivers"].set_status("")
             return
         n = len(self._driver_assignment())
         drivers = len(set(self._driver_assignment().values()))
-        self.driver_status.configure(text=f"Drivers: {n} of {len(values)} orders matched from “{self.route_name}” "
-                                          f"({drivers} driver{'s' if drivers != 1 else ''})")
+        self.boxes["drivers"].set_status(f"✓ {self.route_name}\n{n} of {len(values)} orders matched, "
+                                         f"{drivers} driver{'s' if drivers != 1 else ''}", ok=True)
 
     def _refresh_mapping_status(self):
         self._refresh_file_status()  # the slip count depends on the matches (grouped orders)
@@ -495,15 +557,26 @@ class App:
         self.label_var.set(want if want in labels else (labels[0] if labels else ""))
         if self.label_var.get() != self.settings.get("label_layout"):
             self._label_chosen()
-        if self._meal_window is not None and self._meal_window.winfo_exists():
-            self._meal_window.refresh_layouts()
+        meals = T.list_templates(T.MEAL)
+        saved = self.settings.get("meal_labels") or {}
+        for kind, var, box in (("custom", self.meal_custom_var, self.meal_custom_combo),
+                               ("regular", self.meal_regular_var, self.meal_regular_combo)):
+            box.configure(values=meals)
+            want = select if select in meals and (T.load_template(select) or T.Template()).meal_for in (kind, "all") \
+                else saved.get(f"{kind}_layout")
+            if want not in meals:  # the template that says it's for this kind of meal
+                want = next((n for n in meals if (T.load_template(n) or T.Template()).meal_for == kind),
+                            meals[0] if meals else "")
+            var.set(want)
+        self._meal_layout_chosen()
 
     def _label_chosen(self):
         self.settings["label_layout"] = self.label_var.get()
         storage.save_settings(self.settings)
 
     def _delivery_chosen(self, d):
-        self.gen_btn.configure(text=f"Generate Pack Slips for {d:%a}, {d:%b} {d.day}")
+        if not hasattr(self, "tpl_var"):  # the date picker reports its first date while the window is built
+            return
         layout = self.tpl_var.get()
         if layout:  # each layout (business) remembers its own delivery day
             self.settings.setdefault("delivery_weekday_by_layout", {})[layout] = d.weekday()
@@ -545,13 +618,17 @@ class App:
                                   on_close=lambda closed: self._refresh_templates(closed),
                                   meal_sheet=self.meal_sheet)
 
-    def edit_label(self):
-        if self.label_var.get():
-            self.edit_layout(self.label_var.get())
+    def open_templates(self):
+        """The template builder, opened on the selected pack slip template; pick another kind inside."""
+        self.edit_layout()
 
     def _refresh_generate_state(self):
-        if self.sheet is None:
-            self.status.configure(text=self.status.cget("text") or "Load a spreadsheet to get started.")
+        """Each Generate button works only once the file it needs is loaded."""
+        orders, meals = self.sheet is not None, self.meal_sheet is not None
+        for btn, ready in ((self.gen_btn, orders), (self.label_btn, orders), (self.meal_btn, meals)):
+            btn.state(["!disabled"] if ready else ["disabled"])
+        if not orders and not meals:
+            self.status.configure(text=self.status.cget("text") or "Load this week's files to get started.")
 
     # ------------------------------------------------------------ generate
     def _output_path(self, prefix: str = "Pack Slips", sheet: Sheet | None = None) -> Path:
@@ -564,12 +641,69 @@ class App:
         fallback.mkdir(parents=True, exist_ok=True)
         return default_output_path(fallback / src.name, self.date_picker.value, prefix)
 
-    def open_meal_labels(self, sheet: Sheet | None = None):
-        if self._meal_window is None or not self._meal_window.winfo_exists():
-            self._meal_window = MealLabelsWindow(self.root, self)
-        self._meal_window.lift()
-        if sheet is not None:
-            self._meal_window.use_sheet(sheet)
+    # --------------------------------------------------------- meal labels
+    def _use_meal_sheet(self, sheet: Sheet):
+        if not looks_like_meal_file(sheet) and ask_choice(
+                self.root, "Meal label file?", f"“{sheet.path.name}” doesn't look like the meal label file "
+                "(no Product / Calories / How to Prepare columns).", ["Use it anyway", "Cancel"]) != 0:
+            return
+        self.meal_sheet = sheet
+        self.settings["last_dir"] = str(sheet.path.parent)
+        storage.save_settings(self.settings)
+        self._refresh_meal_status()
+        self._refresh_generate_state()
+
+    def _refresh_meal_status(self):
+        self.meal_summary.configure(text=meal_window.describe(self.settings))
+        if self.meal_sheet is None:
+            return
+        recs = filter_records(read_records(self.meal_sheet), **meal_window.filters(self.settings))
+        custom = sum(1 for r in recs if r["kind"] == "custom")
+        self.boxes["meals"].set_status(f"✓ {self.meal_sheet.path.name}\n{len(recs)} labels "
+                                       f"({custom} custom, {len(recs) - custom} regular)", ok=bool(recs))
+
+    def _meal_layout_chosen(self):
+        self.settings["meal_labels"] = {**(self.settings.get("meal_labels") or {}),
+                                        "custom_layout": self.meal_custom_var.get(),
+                                        "regular_layout": self.meal_regular_var.get()}
+        storage.save_settings(self.settings)
+
+    def meal_sort_filter(self):
+        dlg = meal_window.SortFilterDialog(self.root, self.settings)
+        if dlg.winfo_exists():
+            self.root.wait_window(dlg)
+        self._refresh_meal_status()
+
+    def generate_meal_labels(self):
+        sheet = self.meal_sheet
+        if sheet is None:
+            messagebox.showinfo("No meal label file yet", "Load the meal label file (Label Data) first.",
+                                parent=self.root)
+            return
+        try:  # re-read so last-minute edits are included
+            sheet = self.meal_sheet = load_sheet(sheet.path, sheet.sheet_name)
+        except SpreadsheetError as e:
+            messagebox.showerror("Can't read that file", str(e), parent=self.root)
+            return
+        custom = T.load_template(self.meal_custom_var.get()) if self.meal_custom_var.get() else None
+        regular = T.load_template(self.meal_regular_var.get()) if self.meal_regular_var.get() else None
+        if custom is None or regular is None:
+            messagebox.showinfo("Pick the templates", "Choose a meal label template for custom and for regular "
+                                "meals (or make one in Templates).", parent=self.root)
+            return
+        out = self._output_path("Meal Labels", sheet)
+        diagnostics.note("generate meal labels")
+        try:
+            n = generate_meal_labels(out, sheet, custom, regular, sort=meal_window.sort_keys(self.settings),
+                                     filters=meal_window.filters(self.settings), extra=self.delivery_values())
+        except GenerateError as e:
+            messagebox.showerror("Couldn't make the meal labels", str(e), parent=self.root)
+            return
+        self.status.configure(text=f"✓  Last run: {n} meal label{'s' if n != 1 else ''} saved to {out.name}",
+                              style="Ok.TLabel")
+        self._show_success(out, n, title="Meal labels ready",
+                           detail=f"{n} label{'s' if n != 1 else ''}, one per container.\n"
+                                  "Print at Actual size (100%), not “Fit to page”.")
 
     def _ready_to_generate(self) -> bool:
         """A spreadsheet is loaded (re-read for last-minute edits) and its columns are matched."""

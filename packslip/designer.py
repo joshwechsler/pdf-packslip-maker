@@ -26,7 +26,7 @@ from .pdfgen import item_total, bag_count, render_preview_pdf
 from .spreadsheet import Sheet
 from .meal_labels import MealFields, guess_meal_columns
 from .snapping import snap_edge, snap_move, targets
-from .ui_common import IS_MAC, ColorSwatch, ask_name, open_path
+from .ui_common import IS_MAC, ColorSwatch, ask_name, dropdown, open_path
 
 MARGIN = 24          # px around the page on the canvas
 HANDLE = 7           # px, resize handle size
@@ -39,11 +39,24 @@ GUIDE = "#9DB7D5"
 PT_PER_IN = 72.0
 
 
+KIND_NAMES = {T.SLIP: "Pack Slips", T.LABEL: "Bag Labels", T.MEAL: "Meal Labels"}
+NEW_NAMES = {T.SLIP: "Standard", T.LABEL: T.LABEL_NAME, T.MEAL: T.CUSTOM_MEAL_NAME}
+
+
+def _starter(kind: str, name: str) -> T.Template:
+    """A new template of this kind, from the built-in one."""
+    if kind == T.LABEL:
+        return T.pickup_label_template(name)
+    if kind == T.MEAL:
+        return T.custom_meal_template(name)
+    return T.default_template(name)
+
+
 class Designer(tk.Toplevel):
     def __init__(self, master, template_name: str, mapping: Mapping, sheet: Sheet | None, on_close=None,
                  extra_values=None, meal_sheet: Sheet | None = None):
         super().__init__(master)
-        self.title("Edit Layout")
+        self.title("Templates")
         self.geometry("1180x820")
         self.minsize(960, 640)
         self.mapping = mapping
@@ -103,7 +116,11 @@ class Designer(tk.Toplevel):
     def _build_toolbar(self):
         bar = ttk.Frame(self, padding=(10, 8))
         bar.pack(fill="x")
-        ttk.Label(bar, text="Layout:").pack(side="left")
+        ttk.Label(bar, text="Building:").pack(side="left")
+        self.kind_var = tk.StringVar(value=KIND_NAMES[self.tpl.kind])
+        dropdown(bar, self.kind_var, list(KIND_NAMES.values()), command=self._kind_chosen, width=11).pack(
+            side="left", padx=(4, 10))
+        ttk.Label(bar, text="Template:").pack(side="left")
         self.tpl_var = tk.StringVar(value=self.tpl.name)
         self.tpl_combo = ttk.Combobox(bar, textvariable=self.tpl_var, state="readonly", width=22)
         self.tpl_combo.pack(side="left", padx=(4, 6))
@@ -494,7 +511,7 @@ class Designer(tk.Toplevel):
     def _mark_dirty(self):
         if not self.dirty:
             self.dirty = True
-            self.title("Edit Layout — unsaved changes")
+            self.title("Templates — unsaved changes")
 
     def _select(self, element_id):
         self.selected = element_id
@@ -870,8 +887,24 @@ class Designer(tk.Toplevel):
             self.redraw()
 
     # ------------------------------------------------------- templates I/O
+    def _kind_chosen(self):
+        """Switch to the first template of the chosen kind (pack slips, bag labels or meal labels)."""
+        kind = next(k for k, v in KIND_NAMES.items() if v == self.kind_var.get())
+        if kind == self.tpl.kind:
+            return
+        if not self._confirm_discard():
+            self.kind_var.set(KIND_NAMES[self.tpl.kind])
+            return
+        names = T.list_templates(kind)
+        tpl = T.load_template(names[0]) if names else None
+        if tpl is None:  # none of this kind yet: start from the built-in one
+            tpl = _starter(kind, NEW_NAMES[kind])
+            T.save_template(tpl)
+        self._load(tpl)
+
     def _refresh_template_list(self):
-        names = T.list_templates()
+        self.kind_var.set(KIND_NAMES[self.tpl.kind])
+        names = T.list_templates(self.tpl.kind)
         if self.tpl.name not in names:
             names.append(self.tpl.name)
         self.tpl_combo.configure(values=sorted(names, key=str.lower))
@@ -908,7 +941,7 @@ class Designer(tk.Toplevel):
         self._rebuild_field_menu()
         self.selected = None
         self.dirty = False
-        self.title("Edit Layout")
+        self.title("Templates")
         self._refresh_template_list()
         self._show_props()
         self.redraw()
@@ -933,13 +966,15 @@ class Designer(tk.Toplevel):
     def _new_template(self):
         if not self._confirm_discard():
             return
-        name = ask_name(self, "New Layout",
-                        "A new layout starts fresh, with its own spreadsheet columns and logo\n"
-                        "(use it for a different business). To make a variation of this one,\n"
-                        "use Duplicate instead.\n\nName for the new layout:")
+        kind = self.tpl.kind
+        prompt = ("A new pack slip template starts fresh, with its own spreadsheet columns and logo\n"
+                  "(use it for a different business)." if kind == T.SLIP else
+                  f"A new {KIND_NAMES[kind].lower()[:-1]} template starts from the built-in one.")
+        name = ask_name(self, "New Template", f"{prompt} To make a variation of this one, use Duplicate "
+                                              "instead.\n\nName for the new template:")
         if not name or not self._unique_name_ok(name):
             return
-        tpl = T.default_template(name)
+        tpl = _starter(kind, name)
         for el in tpl.elements:
             if el["type"] == "logo":
                 el["image"] = ""
@@ -973,28 +1008,29 @@ class Designer(tk.Toplevel):
             settings["template"] = name
             storage.save_settings(settings)
         self.dirty = False
-        self.title("Edit Layout")
+        self.title("Templates")
         self._refresh_template_list()
 
     def _delete_template(self):
-        names = T.list_templates()
+        names = T.list_templates(self.tpl.kind)
         if len(names) <= 1 and self.tpl.name in names:
-            messagebox.showinfo("Can't delete", "You need at least one layout. Create another one first.", parent=self)
+            messagebox.showinfo("Can't delete", f"You need at least one template for {KIND_NAMES[self.tpl.kind].lower()}. "
+                                "Create another one first.", parent=self)
             return
         if not messagebox.askyesno("Delete layout?", f"Delete the “{self.tpl.name}” layout? This can't be undone.",
                                    parent=self):
             return
         T.delete_template(self.tpl.name)
         delete_mapping(self.tpl.name)
-        remaining = T.list_templates() or T.ensure_default_template()
+        remaining = T.list_templates(self.tpl.kind) or T.ensure_default_template()
         self.dirty = False
         self._load(T.load_template(remaining[0]) or T.default_template())
 
     def _save(self):
         T.save_template(self.tpl)
         self.dirty = False
-        self.title("Edit Layout — saved")
-        self.after(1500, lambda: self.winfo_exists() and not self.dirty and self.title("Edit Layout"))
+        self.title("Templates — saved")
+        self.after(1500, lambda: self.winfo_exists() and not self.dirty and self.title("Templates"))
         self._refresh_template_list()
 
     def _preview_pdf(self):
