@@ -10,28 +10,14 @@ from dataclasses import dataclass
 
 from reportlab.pdfbase.pdfmetrics import getFont, stringWidth
 
+from . import fonts
+
 LEADING = 1.2
 MIN_SIZE = 6.0
 PAD = 4.0  # inner padding (points) used when an element has a fill or border
 
-_PDF_FONTS = {
-    ("Helvetica", False, False): "Helvetica",
-    ("Helvetica", True, False): "Helvetica-Bold",
-    ("Helvetica", False, True): "Helvetica-Oblique",
-    ("Helvetica", True, True): "Helvetica-BoldOblique",
-    ("Times", False, False): "Times-Roman",
-    ("Times", True, False): "Times-Bold",
-    ("Times", False, True): "Times-Italic",
-    ("Times", True, True): "Times-BoldItalic",
-    ("Courier", False, False): "Courier",
-    ("Courier", True, False): "Courier-Bold",
-    ("Courier", False, True): "Courier-Oblique",
-    ("Courier", True, True): "Courier-BoldOblique",
-}
-
-
 def pdf_font(family: str, bold: bool, italic: bool) -> str:
-    return _PDF_FONTS.get((family, bool(bold), bool(italic)), "Helvetica")
+    return fonts.face(family, bold, italic)
 
 
 def ascent(font_name: str, size: float) -> float:

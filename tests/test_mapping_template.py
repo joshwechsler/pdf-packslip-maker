@@ -53,7 +53,10 @@ def test_bad_template_json_is_normalized():
                               "elements": [{"type": "field", "x": "5", "w": 0, "font": "Comic"}]})
     el = t.elements[0]
     assert t.page == T.DEFAULT_PAGE
-    assert el["x"] == 5.0 and el["w"] == 1.0 and el["font"] == "Helvetica" and el["id"]
+    assert el["x"] == 5.0 and el["w"] == 1.0 and el["id"]
+    # An unknown font name is kept (it may be added later) and prints in Helvetica meanwhile.
+    from packslip.layout import pdf_font
+    assert el["font"] == "Comic" and pdf_font(el["font"], False, False) == "Helvetica"
 
 
 REAL_HEADERS = ["Order Received", "Customer Name", "Phone Number", "Address", "Backyard Italian Pasta",

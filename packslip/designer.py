@@ -17,7 +17,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from PIL import Image, ImageTk
 
-from . import storage
+from . import fonts, storage
 from . import template as T
 from .layout import ascent, fit_text, inner_box, items_primitives
 from .mapping import COMPUTED_KEYS, ITEMS_KEY, Mapping, copy_mapping, delete_mapping, load_mapping, rename_mapping
@@ -268,6 +268,34 @@ class Designer(tk.Toplevel):
                 text=f"Previewing: {name[:22]}  ({self.preview_index + 1} of {len(records)})")
         else:
             self.preview_label.configure(text="Previewing sample data")
+
+    def _font_row(self, grid, add_row, el, bind_var):
+        """Font list plus "Add Font…" (a .ttf from this Mac, kept in the app's font folder)."""
+        font_var = tk.StringVar(value=el["font"])
+        combo = ttk.Combobox(grid, textvariable=font_var, values=fonts.families(), state="readonly", width=18)
+        add_row("Font", combo)
+        bind_var(font_var, "font")
+
+        def add():
+            picked = filedialog.askopenfilenames(
+                parent=self, title="Add a font (.ttf)", initialdir=str(Path.home() / "Downloads"),
+                filetypes=[("Font files", "*.ttf *.otf *.ttc *.TTF *.OTF"), ("All files", "*")])
+            if not picked:
+                return
+            try:
+                added = fonts.add_font_files(picked)
+            except fonts.FontError as e:
+                messagebox.showerror("Can't use that font", str(e), parent=self)
+                return
+            combo.configure(values=fonts.families())
+            if added:
+                font_var.set(added[0])
+                messagebox.showinfo("Font added", f"Added {', '.join(added)}. It's now in the Font list "
+                                    "for every layout on this Mac.", parent=self)
+        add_row("", ttk.Button(grid, text="Add Font…", command=add))
+        if not fonts.available(el["font"]):
+            add_row("", ttk.Label(grid, text=f"“{el['font']}” isn't on this Mac: it prints in Helvetica. "
+                                             "Add it with Add Font…", foreground="#B00020", wraplength=260))
 
     # -------------------------------------------------------------- drawing
     def _font(self, family, px, bold, italic):
@@ -779,9 +807,7 @@ class Designer(tk.Toplevel):
             ttk.Label(grid, text="Lists every item this customer ordered, with quantity.",
                       foreground="#666666", wraplength=280).grid(row=row[0], column=0, columnspan=2, sticky="w")
             row[0] += 1
-            font_var = tk.StringVar(value=el["font"])
-            add_row("Font", ttk.Combobox(grid, textvariable=font_var, values=T.FONTS, state="readonly", width=12))
-            bind_var(font_var, "font")
+            self._font_row(grid, add_row, el, bind_var)
             size_var = tk.DoubleVar(value=el["size"])
             add_row("Size", ttk.Spinbox(grid, from_=5, to=40, increment=1, textvariable=size_var, width=6))
             bind_var(size_var, "size", lambda v: max(4.0, min(float(v), 60.0)))
@@ -794,9 +820,7 @@ class Designer(tk.Toplevel):
                 row[0] += 1
                 bind_var(var, key)
         if t in ("field", "text"):
-            font_var = tk.StringVar(value=el["font"])
-            add_row("Font", ttk.Combobox(grid, textvariable=font_var, values=T.FONTS, state="readonly", width=12))
-            bind_var(font_var, "font")
+            self._font_row(grid, add_row, el, bind_var)
             size_var = tk.DoubleVar(value=el["size"])
             add_row("Size", ttk.Spinbox(grid, from_=5, to=96, increment=1, textvariable=size_var, width=6))
             bind_var(size_var, "size", lambda v: max(4.0, min(float(v), 200.0)))

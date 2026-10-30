@@ -59,8 +59,12 @@ def _selftest(out: str | None) -> int:
     items = m.item_headers(sheet.headers)
     ok = (logo_ok and pages == rows and size > 10_000 and secs < 30 and m.items_mode == "columns" and items == menu
           and m.columns.get("customer_name") == "Customer Name")
+    from . import fonts
+    from .layout import pdf_font
+    fonts_ok = len(fonts.families()) >= 8 and pdf_font("Montserrat", True, False) != "Helvetica-Bold"
+    ok = ok and fonts_ok
     print(f"selftest: pages={pages} size={size} seconds={secs:.2f} items={items} mapped={m.columns} "
-          f"logo={logo_ok} -> {'OK' if ok else 'FAIL'}")
+          f"logo={logo_ok} fonts={fonts_ok} -> {'OK' if ok else 'FAIL'}")
     return 0 if ok else 1
 
 

@@ -333,3 +333,18 @@ The success screen for pack slips, bag labels and meal labels has a **Save to Go
   (`settings.json` → `drive_folders`), so they can share a folder or not. **Change Drive folder…** picks again.
 - It never replaces a file: a second copy is saved as `name (2).pdf`, then `(3)`…
 - No sign-in; works offline (Drive syncs later). The local PDF stays where it was saved.
+
+## Fonts
+
+The designer's **Font** list has the three PDF basics (Helvetica, Times, Courier), five bundled
+fonts (Lato, Montserrat, Oswald, Playfair Display, Roboto Condensed: Regular/Bold/Italic/Bold Italic;
+Oswald has no italic) and any fonts added with **Add Font…** (`packslip/fonts.py`).
+- Bundled fonts: `packslip/assets/fonts/<Family>/`, SIL Open Font License (`OFL.txt` in each folder),
+  built from Google Fonts by `tools/make_fonts.py` (variable fonts cut into fixed weights).
+- **Add Font…** takes `.ttf` files (several at once, e.g. Regular + Bold). They're copied into
+  `<data dir>/fonts/`, so they're on **that Mac only**. Refused, with the reason: variable fonts (use the
+  "static" folder of a Google Fonts download), PostScript-style `.otf`, and `.ttc` collections.
+- A style a font doesn't have uses its nearest style (Oswald italic → Oswald). A layout naming a font
+  this Mac doesn't have keeps the name, prints that text in Helvetica, and warns before generating.
+- On the Mac the fonts are registered for the app only (CoreText, process scope), so the designer
+  preview draws them without installing anything system-wide.

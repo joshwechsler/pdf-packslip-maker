@@ -12,7 +12,7 @@ import traceback
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import APP_NAME, __version__, diagnostics, storage, updater
+from . import APP_NAME, __version__, diagnostics, fonts, storage, updater
 from . import template as T
 from .designer import Designer
 from .drivers import DriverBook, customer_key
@@ -26,7 +26,7 @@ from .routes import RouteColumns, drop_off_drivers, guess_route_columns, join_ro
 from .mapping import Mapping, load_mapping, migrate_legacy_mapping, save_mapping
 from .mapping_dialog import MappingDialog
 from .datepicker import DatePicker, default_delivery_date, sheet_delivery_date
-from .pdfgen import (GenerateError, blank_line_warnings, check_ready, default_output_path, format_delivery_date,
+from .pdfgen import (GenerateError, blank_line_warnings, font_warnings, check_ready, default_output_path, format_delivery_date,
                      generate_labels, generate_meal_labels, generate_pdf)
 from .spreadsheet import Sheet, SpreadsheetError, load as load_sheet
 from .ui_common import (IS_MAC, ask_choice, ask_name, center_on, disable_combobox_wheel, make_modal, open_path,
@@ -44,6 +44,10 @@ DROP_HOVER = "#E3ECF7"
 
 
 def make_root() -> tuple[tk.Tk, bool]:
+    try:
+        fonts.load()  # before Tk starts, so the Mac lets the designer preview use them
+    except Exception:  # noqa: BLE001 - fonts are optional; the PDF falls back to Helvetica
+        pass
     if TkinterDnD is not None:
         try:
             return TkinterDnD.Tk(), True
@@ -766,6 +770,8 @@ class App:
             messagebox.showinfo("Pick the templates", "Choose a meal label template for custom and for regular "
                                 "meals (or make one in Templates).", parent=self.root)
             return
+        if not self._fonts_ok(custom, regular):
+            return
         out = self._output_path("Meal Labels", sheet)
         diagnostics.note("generate meal labels")
         try:
@@ -779,6 +785,11 @@ class App:
         self._show_success(out, n, title="Meal labels ready",
                            detail=f"{n} label{'s' if n != 1 else ''}, one per container.\n"
                                   "Print at Actual size (100%), not “Fit to page”.")
+
+    def _fonts_ok(self, *templates) -> bool:
+        warnings = font_warnings(*templates)
+        return not warnings or ask_choice(self.root, "Font not on this Mac", warnings[0],
+                                          ["Generate Anyway", "Cancel"]) == 0
 
     def _ready_to_generate(self) -> bool:
         """A spreadsheet is loaded (re-read for last-minute edits) and its columns are matched."""
@@ -804,6 +815,8 @@ class App:
             return
         if not self._ready_to_generate():
             return
+        if not self._fonts_ok(tpl):
+            return
         out = self._output_path("Bag Labels")
         diagnostics.note("generate bag labels")
         try:
@@ -828,8 +841,8 @@ class App:
                                    parent=self.root, icon="warning"):
                 self.remap()
             return
-        warnings = blank_line_warnings(tpl, self.mapping, len(self._driver_assignment()))
-        if warnings and ask_choice(self.root, "Some lines will be blank", "\n\n".join(warnings),
+        warnings = blank_line_warnings(tpl, self.mapping, len(self._driver_assignment())) + font_warnings(tpl)
+        if warnings and ask_choice(self.root, "Check before printing", "\n\n".join(warnings),
                                    ["Generate Anyway", "Cancel"]) != 0:
             return
 

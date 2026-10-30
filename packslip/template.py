@@ -86,8 +86,8 @@ def normalize_element(el: dict) -> dict:
     out["h"] = max(out["h"], 1.0)
     if etype in ("field", "text", "items"):
         out["size"] = float(out.get("size") or 11)
-        if out.get("font") not in FONTS:
-            out["font"] = "Helvetica"
+        if not isinstance(out.get("font"), str) or not out["font"].strip():
+            out["font"] = "Helvetica"   # any other name is kept: it may be a font added on another Mac
         if out.get("align") not in ("left", "center", "right"):
             out["align"] = "left"
     return out

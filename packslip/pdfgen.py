@@ -158,6 +158,18 @@ def check_ready(template: Template, mapping: Mapping, sheet: Sheet) -> None:
         )
 
 
+def font_warnings(*templates: Template) -> list[str]:
+    """One warning naming the fonts these layouts use that this Mac doesn't have (they print in Helvetica)."""
+    from . import fonts
+    missing = sorted({el["font"] for t in templates if t for el in t.elements
+                      if el.get("font") and not fonts.available(el["font"])}, key=str.lower)
+    if not missing:
+        return []
+    names = ", ".join(f"“{m}”" for m in missing)
+    return [f"This layout uses {names}, which {'isn' if len(missing) == 1 else 'aren'}'t on this Mac, so that text "
+            "will print in Helvetica. To fix it: Templates → select the box → Font → Add Font…"]
+
+
 def blank_line_warnings(template: Template, mapping: Mapping, drivers_matched: int) -> list[str]:
     """Lines on the layout that will print empty on every slip because a setting is missing."""
     used = template.used_field_keys(mapping)
