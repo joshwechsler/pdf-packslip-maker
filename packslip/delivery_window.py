@@ -18,12 +18,15 @@ class ReportCheckDialog(tk.Toplevel):
         self.transient(master)
         self.resizable(False, False)
         self.save = False
+        self.fold: list[str] = []      # ticked home deliveries that join a drop-off
+        self._fold_vars: list[tuple[str, tk.BooleanVar]] = []
         a = report.audit
         f = ttk.Frame(self, padding=18)
         f.pack(fill="both", expand=True)
         ttk.Label(f, text="Delivery report check", font=("Helvetica", 15, "bold")).pack(anchor="w")
         lines = [f"{a['orders']} orders read",
-                 f"{a['rows']} stops on the delivery report:",
+                 f"{a['rows']} stops on the delivery report" + (" (before the ticked ones below join a drop-off):"
+                                                                 if report.fold_candidates else ":"),
                  f"     {a['home']} home deliveries",
                  f"     {a['pickups_listed']} pickup-location order{'s' if a['pickups_listed'] != 1 else ''}"]
         if a["drops"]:
@@ -43,6 +46,22 @@ class ReportCheckDialog(tk.Toplevel):
         else:
             ttk.Label(f, text="✓ Nothing to check: every order has its name, address, email and phone.",
                       foreground="#1E7B34").pack(anchor="w", pady=(0, 10))
+        by_order = {r["Order"]: r for r in report.rows}
+        for loc_name, orders in report.fold_candidates.items():
+            loc = report.drop_locations[loc_name]
+            stop = loc.drop_name or loc.name
+            ttk.Label(f, text=f"{len(orders)} home deliver{'ies are' if len(orders) != 1 else 'y is'} going to "
+                              f"{stop}'s address. Ticked ones join the {stop} drop-off; untick any that should "
+                              "stay a separate stop.", foreground="#1F5FAD", wraplength=560,
+                      justify="left").pack(anchor="w", pady=(4, 2))
+            box = ttk.Frame(f)
+            box.pack(fill="x", padx=(12, 0), pady=(0, 8))
+            for order in orders:
+                r = by_order.get(order, {})
+                var = tk.BooleanVar(value=True)
+                ttk.Checkbutton(box, variable=var, text=f"{r.get('Customer', '')}  ·  {r.get('Full Address', '')}  "
+                                                        f"·  {r.get('Total Items', '')} items").pack(anchor="w")
+                self._fold_vars.append((order, var))
         ttk.Label(f, text=f"Saves as: {file_name}", foreground="#666666").pack(anchor="w")
         btns = ttk.Frame(f)
         btns.pack(fill="x", pady=(12, 0))
@@ -54,6 +73,7 @@ class ReportCheckDialog(tk.Toplevel):
 
     def _save(self):
         self.save = True
+        self.fold = [order for order, var in self._fold_vars if var.get()]
         self.destroy()
 
 

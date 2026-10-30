@@ -264,6 +264,8 @@ Goods, Total Items`.
   Matching: exact name or another spelling, capitals and spaces ignored, then again without a trailing "(Town)".
   Each location is *each order a stop*, *one drop-off for all its orders* (Chapel Haven: one "Chapel Haven" stop,
   items summed, no phone/email) or *not on the list* (Main). Unknown locations are listed with a blank address and flagged.
+- Home deliveries addressed to a drop-off location (same street number and street name, and its town, e.g.
+  "1040 Whalley Avenue, Apt 304, New Haven") are listed in the check window, ticked; ticked ones join that drop-off.
 - A check window shows the counts and anything flagged before saving `Honeyplate_Delivery_Report_<date>.csv`
   next to the orders file. Wrong columns or counts block the save.
 - Round trip: upload it, assign routes, and drop the returned file (same columns, Route# filled) on the **Driver

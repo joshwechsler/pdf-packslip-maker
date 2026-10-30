@@ -101,3 +101,50 @@ def test_locations_round_trip():
     again = load_locations()
     new = next(loc for loc in again if loc.name == "New Gym")
     assert new.full_address() == "(New Gym) 1 Main St, Hamden, CT 06514" and new.mode == "each"
+
+
+FOLD_ROWS = [
+    '2001,Ann Lee,4,InStorePickup,11/01/2026,Chapel Haven- RESIDENTS ONLY,Pie,4,,,,a@x.com,(203) 555-0101,\n',
+    '2002,Bo Ray,5,ScheduledDelivery,11/01/2026,Main (West Haven),Pie,5,New Haven,06515,'
+    '"1040 Whalley Ave, New Haven, CT 06515",b@x.com,(203) 555-0102,\n',
+    '2003,Cy Fox,6,ScheduledDelivery,11/01/2026,,Pie,6,New Haven,06515,'
+    '"Chapel Haven 1040 Whalley Avenue, Apt 304, New Haven, CT 06515",c@x.com,(203) 555-0103,\n',
+    '2004,Dee Kim,2,ScheduledDelivery,11/01/2026,,Pie,2,Hamden,06514,'
+    '"1040 Whalley Ave, Hamden, CT 06514",d@x.com,(203) 555-0104,\n',              # same street, other town
+    '2005,Eve Day,3,ScheduledDelivery,11/01/2026,,Pie,3,New Haven,06511,'
+    '"10400 Whalley Ave, New Haven, CT 06511",e@x.com,(203) 555-0105,\n',          # different number
+]
+
+
+def _fold_report(tmp_path, rows=FOLD_ROWS):
+    p = tmp_path / "fold.csv"
+    p.write_text(HEAD + "".join(rows))
+    return build_report(load(p), DEFAULT_LOCATIONS)
+
+
+def test_home_deliveries_to_a_drop_off_address_are_found(tmp_path):
+    rep = _fold_report(tmp_path)
+    assert rep.fold_candidates == {"Chapel Haven- RESIDENTS ONLY": ["2002", "2003"]}
+    assert [r["Order"] or r["Customer"] for r in rep.rows] == ["Chapel Haven", "2002", "2003", "2004", "2005"]
+
+
+def test_folding_into_the_drop_off(tmp_path):
+    from packslip.delivery_report import fold_into_drops
+    rep = _fold_report(tmp_path)
+    fold_into_drops(rep, ["2002", "2003"])
+    assert [r["Order"] or r["Customer"] for r in rep.rows] == ["Chapel Haven", "2004", "2005"]
+    chapel = rep.rows[0]
+    assert chapel["Total Items"] == str(4 + 5 + 6)
+    assert (rep.audit["rows"], rep.audit["home"], rep.audit["combined"]) == (3, 2, 3)
+    rep2 = _fold_report(tmp_path)
+    fold_into_drops(rep2, ["2002"])                                   # one unticked: stays its own stop
+    assert [r["Order"] or r["Customer"] for r in rep2.rows] == ["Chapel Haven", "2003", "2004", "2005"]
+
+
+def test_folding_creates_the_drop_off_when_no_pickups_there(tmp_path):
+    from packslip.delivery_report import fold_into_drops
+    rep = _fold_report(tmp_path, FOLD_ROWS[1:3])                      # only home deliveries to Chapel Haven
+    assert rep.fold_candidates == {"Chapel Haven- RESIDENTS ONLY": ["2002", "2003"]}
+    fold_into_drops(rep, ["2002", "2003"])
+    assert len(rep.rows) == 1 and rep.rows[0]["Customer"] == "Chapel Haven" and rep.rows[0]["Total Items"] == "11"
+    assert rep.rows[0]["Full Address"].startswith("(Chapel Haven- RESIDENTS ONLY) 1040 Whalley Ave")

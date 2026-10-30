@@ -139,6 +139,10 @@ class Report:
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)      # these block the export
     audit: dict = field(default_factory=dict)
+    # Home deliveries whose address is a one-drop-off location's address: {location name: [order numbers]}.
+    # The Operator reviews them; fold_into_drops() moves the chosen ones into that drop-off.
+    fold_candidates: dict[str, list[str]] = field(default_factory=dict)
+    drop_locations: dict[str, PickupLocation] = field(default_factory=dict)
 
 
 def build_report(sheet: Sheet, locations: list[PickupLocation]) -> Report:
@@ -173,6 +177,7 @@ def build_report(sheet: Sheet, locations: list[PickupLocation]) -> Report:
                 "Shipper": SHIPPER, "Goods": GOODS, "Total Items": (row.get("Total Items") or "").strip()}
 
     home = pickups_listed = left_off = combined = 0
+    home_orders: set[str] = set()
     drops: dict[str, dict] = {}         # one-drop location name -> its row
     for key, row in orders.items():
         customer = " ".join((row.get("Customer") or "").split())
@@ -188,6 +193,7 @@ def build_report(sheet: Sheet, locations: list[PickupLocation]) -> Report:
                 rep.warnings.append(f"{label}: home delivery with no address.")
             rep.rows.append(base(row, customer, address, (row.get("City") or "").strip(), location))
             home += 1
+            home_orders.add(key)
             _contact_warnings(rep, rep.rows[-1], label)
             continue
         loc = match_location(location, locations)
@@ -217,6 +223,12 @@ def build_report(sheet: Sheet, locations: list[PickupLocation]) -> Report:
         pickups_listed += 1
         _contact_warnings(rep, rep.rows[-1], label)
 
+    for loc in locations:
+        if loc.mode == "one_drop":
+            found = [r["Order"] for r in rep.rows if r["Order"] in home_orders and same_place(r["Full Address"], loc)]
+            if found:
+                rep.fold_candidates[loc.name] = found
+                rep.drop_locations[loc.name] = loc
     rep.audit = {"orders": len(orders), "rows": len(rep.rows), "home": home, "pickups_listed": pickups_listed,
                  "left_off": left_off, "combined": combined, "drops": len(drops)}
     if home + pickups_listed + len(drops) != len(rep.rows) or home + pickups_listed + left_off + combined != len(orders):
@@ -224,6 +236,45 @@ def build_report(sheet: Sheet, locations: list[PickupLocation]) -> Report:
     if any(list(r) != COLUMNS for r in rep.rows):
         rep.errors.append("Column check failed. Please report this.")
     return rep
+
+
+def same_place(address: str, loc: PickupLocation) -> bool:
+    """A delivery address is the location's when it has the location's street number and street name
+    and its town, e.g. '(Chapel Haven) 1040 Whalley Avenue, Apt 304, New Haven' for '1040 Whalley Ave, New Haven'."""
+    m = re.match(r"\s*(\d+)\s+([A-Za-z]+)", loc.address or "")
+    city = loc.city().lower()
+    if not m or not city:
+        return False
+    text = (address or "").lower()
+    return bool(re.search(rf"(?<!\d){m.group(1)}\s+{re.escape(m.group(2).lower())}\b", text)) and city in text
+
+
+def fold_into_drops(rep: Report, orders: list[str]) -> None:
+    """Move the chosen home deliveries (order numbers) into their location's drop-off stop."""
+    chosen = set(orders)
+    for loc_name, candidates in rep.fold_candidates.items():
+        loc = rep.drop_locations[loc_name]
+        stop = loc.drop_name or loc.name
+        for order in candidates:
+            if order not in chosen:
+                continue
+            i = next((n for n, r in enumerate(rep.rows) if r["Order"] == order), None)
+            if i is None:
+                continue
+            row = rep.rows.pop(i)
+            drop = next((r for r in rep.rows if not r["Order"] and r["Customer"] == stop), None)
+            if drop is None:  # no pickups there this week: the drop-off starts with this order
+                drop = dict(row, **{"Order": "", "Customer": stop, "Customer First Name": stop,
+                                    "Customer Last Name": "", "Location": loc.name, "City": loc.city(),
+                                    "Full Address": loc.full_address(), "Customer Email": "", "Customer Phone": "",
+                                    "Driver Instructions": "", "Total Items": "0"})
+                rep.rows.insert(i, drop)
+                rep.audit["drops"] += 1
+            drop["Total Items"] = str(_int(drop["Total Items"]) + _int(row["Total Items"]))
+            rep.audit["home"] -= 1
+            rep.audit["combined"] += 1
+    rep.audit["rows"] = len(rep.rows)
+    rep.fold_candidates = {}
 
 
 def _contact_warnings(rep: Report, row: dict, label: str) -> None:

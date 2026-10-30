@@ -17,7 +17,7 @@ from . import template as T
 from .designer import Designer
 from .drivers import DriverBook, customer_key
 from . import meal_window
-from .delivery_report import build_report, load_locations, write_report
+from .delivery_report import build_report, fold_into_drops, load_locations, write_report
 from .delivery_window import PickupLocationsDialog, ReportCheckDialog
 from .meal_labels import filter_records, looks_like_meal_file, read_records
 from .route_dialog import RouteDialog
@@ -677,6 +677,7 @@ class App:
             self.root.wait_window(dlg)
         if not dlg.save:
             return
+        fold_into_drops(report, dlg.fold)
         try:
             write_report(out, report.rows)
         except OSError as e:
