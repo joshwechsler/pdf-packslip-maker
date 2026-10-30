@@ -8,6 +8,12 @@ on:
 permissions:
   contents: write  # only used to attach the zip to a GitHub Release on v* tags
 
+# One build per branch at a time, in push order, so releases are published oldest first and the newest
+# build ends up as GitHub's "latest" release (which installed apps check for updates).
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   PY_VERSION: "3.12.10"   # python.org universal2 installer (bundles a universal2 Tcl/Tk 8.6)
 
@@ -123,6 +129,19 @@ jobs:
           cat latest.json
 
       # Installed apps check the latest release on launch and offer to update themselves.
+      # Never take "latest" away from a newer build (e.g. one that finished first).
+      - name: Is this the newest build?
+        id: newest
+        if: github.ref == 'refs/heads/claude/packslip-app' || github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LATEST=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName 2>/dev/null | sed 's/^build-//')
+          case "$LATEST" in ''|*[!0-9]*) LATEST=0 ;; esac
+          if [ "$LATEST" -le "${{ github.run_number }}" ]; then NEWEST=true; else NEWEST=false; fi
+          echo "current latest: build $LATEST; this build: ${{ github.run_number }}; mark as latest: $NEWEST"
+          echo "latest=$NEWEST" >> "$GITHUB_OUTPUT"
+
       - name: Publish release for the in-app updater
         if: github.ref == 'refs/heads/claude/packslip-app' || github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
@@ -131,7 +150,7 @@ jobs:
           name: Packs Be Slippin' ${{ steps.version.outputs.version }} (build ${{ github.run_number }})
           target_commitish: ${{ github.sha }}
           body: ${{ github.event.head_commit.message }}
-          make_latest: "true"
+          make_latest: ${{ steps.newest.outputs.latest }}
           files: |
             Packs-Be-Slippin-mac.zip
             latest.json
@@ -140,7 +159,7 @@ jobs:
       # to them: pretend to be build 1 and require the app (no GitHub login) to find this build,
       # once with curl and once with the built-in Python fallback.
       - name: Verify installed apps can see this update
-        if: github.ref == 'refs/heads/claude/packslip-app' || github.ref == 'refs/heads/main'
+        if: (github.ref == 'refs/heads/claude/packslip-app' || github.ref == 'refs/heads/main') && steps.newest.outputs.latest == 'true'
         run: |
           APP="dist/Packs Be Slippin'.app/Contents/MacOS/Packs Be Slippin'"
           for i in 1 2 3 4 5 6; do   # GitHub can take a few seconds to list a new release
