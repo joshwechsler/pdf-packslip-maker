@@ -58,7 +58,7 @@ class Designer(tk.Toplevel):
         super().__init__(master)
         self.title("Templates")
         self.geometry("1180x820")
-        self.minsize(960, 640)
+        self.minsize(1060, 640)
         self.mapping = mapping
         self.sheet = sheet
         # Meal-label layouts preview the meal label file and use its fields; other layouts use the orders.
@@ -116,32 +116,30 @@ class Designer(tk.Toplevel):
     def _build_toolbar(self):
         bar = ttk.Frame(self, padding=(10, 8))
         bar.pack(fill="x")
+        # Save and Preview first, so they keep their place however narrow the window is.
+        ttk.Button(bar, text="Save", command=self._save, default="active").pack(side="right")
+        ttk.Button(bar, text="Preview PDF", command=self._preview_pdf).pack(side="right", padx=6)
         ttk.Label(bar, text="Building:").pack(side="left")
         self.kind_var = tk.StringVar(value=KIND_NAMES[self.tpl.kind])
         dropdown(bar, self.kind_var, list(KIND_NAMES.values()), command=self._kind_chosen, width=11).pack(
             side="left", padx=(4, 10))
         ttk.Label(bar, text="Template:").pack(side="left")
         self.tpl_var = tk.StringVar(value=self.tpl.name)
-        self.tpl_combo = ttk.Combobox(bar, textvariable=self.tpl_var, state="readonly", width=22)
+        self.tpl_combo = ttk.Combobox(bar, textvariable=self.tpl_var, state="readonly", width=18)
         self.tpl_combo.pack(side="left", padx=(4, 6))
         self.tpl_combo.bind("<<ComboboxSelected>>", lambda e: self._switch_template(self.tpl_var.get()))
-        for text, cmd in (("New", self._new_template), ("Duplicate", self._duplicate_template),
-                          ("Rename", self._rename_template), ("Delete", self._delete_template)):
-            ttk.Button(bar, text=text, command=cmd).pack(side="left", padx=2)
+        manage = ttk.Menubutton(bar, text="Manage ▾")  # New, Duplicate, Rename, Delete
+        menu = tk.Menu(manage, tearoff=0)
+        for text, cmd in (("New template…", self._new_template), ("Duplicate this template…", self._duplicate_template),
+                          ("Rename this template…", self._rename_template), (None, None),
+                          ("Delete this template…", self._delete_template)):
+            if text is None:
+                menu.add_separator()
+            else:
+                menu.add_command(label=text, command=cmd)
+        manage["menu"] = menu
+        manage.pack(side="left", padx=2)
 
-        ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=10)
-        ttk.Label(bar, text="Page:").pack(side="left")
-        self.page_var = tk.StringVar(value=self.tpl.page)
-        page = ttk.Combobox(bar, textvariable=self.page_var, values=list(T.PAGE_SIZES), state="readonly", width=22)
-        page.pack(side="left", padx=4)
-        page.bind("<<ComboboxSelected>>", lambda e: self._set_page(self.page_var.get()))
-        self.orient_var = tk.StringVar(value=self.tpl.orientation)
-        orient = ttk.Combobox(bar, textvariable=self.orient_var, values=T.ORIENTATIONS, state="readonly", width=10)
-        orient.pack(side="left", padx=4)
-        orient.bind("<<ComboboxSelected>>", lambda e: self._set_orientation(self.orient_var.get()))
-
-        ttk.Button(bar, text="Save", command=self._save).pack(side="right")
-        ttk.Button(bar, text="Preview PDF", command=self._preview_pdf).pack(side="right", padx=6)
 
         bar2 = ttk.Frame(self, padding=(10, 0, 10, 8))
         bar2.pack(fill="x")
@@ -159,7 +157,7 @@ class Designer(tk.Toplevel):
         nav = ttk.Frame(bar2)
         nav.pack(side="right")
         ttk.Button(nav, text="◀", width=3, command=lambda: self._step_preview(-1)).pack(side="left")
-        self.preview_label = ttk.Label(nav, text="", width=40, anchor="center")
+        self.preview_label = ttk.Label(nav, text="", width=32, anchor="center")
         self.preview_label.pack(side="left", padx=4)
         ttk.Button(nav, text="▶", width=3, command=lambda: self._step_preview(1)).pack(side="left")
 
@@ -173,6 +171,20 @@ class Designer(tk.Toplevel):
 
     def _build_panel(self):
         p = self.panel
+        ttk.Label(p, text="Page", font=("Helvetica", 13, "bold")).pack(anchor="w")
+        page_row = ttk.Frame(p)
+        page_row.pack(fill="x", pady=(4, 0))
+        orient_row = ttk.Frame(p)
+        orient_row.pack(fill="x", pady=(4, 10))
+        self.page_var = tk.StringVar(value=self.tpl.page)
+        page = ttk.Combobox(page_row, textvariable=self.page_var, values=list(T.PAGE_SIZES), state="readonly",
+                            width=24)
+        page.pack(side="left")
+        page.bind("<<ComboboxSelected>>", lambda e: self._set_page(self.page_var.get()))
+        self.orient_var = tk.StringVar(value=self.tpl.orientation)
+        orient = ttk.Combobox(orient_row, textvariable=self.orient_var, values=T.ORIENTATIONS, state="readonly", width=12)
+        orient.pack(side="left")
+        orient.bind("<<ComboboxSelected>>", lambda e: self._set_orientation(self.orient_var.get()))
         ttk.Label(p, text="Brand", font=("Helvetica", 13, "bold")).pack(anchor="w")
         brand = ttk.Frame(p)
         brand.pack(fill="x", pady=(4, 2))
@@ -199,7 +211,7 @@ class Designer(tk.Toplevel):
         ttk.Label(self.label_opts, text="Labels for").pack(side="left")
         self.label_orders_var = tk.StringVar()
         lo = ttk.Combobox(self.label_opts, textvariable=self.label_orders_var, values=list(T.LABEL_ORDERS.values()),
-                          state="readonly", width=16)
+                          state="readonly", width=15)
         lo.pack(side="left", padx=8)
         lo.bind("<<ComboboxSelected>>", lambda e: self._set_label_orders())
         # Meal-label layouts only: which meals use this layout.
