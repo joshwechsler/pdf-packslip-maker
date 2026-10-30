@@ -16,6 +16,8 @@ from . import APP_NAME, __version__, diagnostics, storage, updater
 from . import template as T
 from .designer import Designer
 from .drivers import DriverBook, customer_key
+from .meal_labels import looks_like_meal_file
+from .meal_window import MealLabelsWindow
 from .route_dialog import RouteDialog
 from .routes import RouteColumns, guess_route_columns, join_routes, looks_like_route_file
 from .mapping import Mapping, load_mapping, migrate_legacy_mapping, save_mapping
@@ -61,6 +63,8 @@ class App:
         self.dnd = dnd
         self.sheet: Sheet | None = None
         self.mapping: Mapping | None = None  # column matches for the selected layout
+        self.meal_sheet: Sheet | None = None  # the Label Data export, for meal labels
+        self._meal_window = None
         names = T.ensure_default_template()  # may record new built-in layouts in the settings
         self.settings = storage.load_settings()
         migrate_legacy_mapping(names)
@@ -168,6 +172,11 @@ class App:
         self.label_combo = ttk.Combobox(label_row, textvariable=self.label_var, state="readonly", width=12)
         self.label_combo.pack(side="left", padx=(6, 0), fill="x", expand=True)
         self.label_combo.bind("<<ComboboxSelected>>", lambda e: self._label_chosen())
+        meal_row = ttk.Frame(outer)
+        meal_row.pack(fill="x", pady=(8, 0))
+        ttk.Button(meal_row, text="Meal Labels…", command=self.open_meal_labels).pack(side="right")
+        ttk.Label(meal_row, text="Meal labels: one per container, from the Label Data file",
+                  style="Muted.TLabel").pack(side="left")
         self.progress = ttk.Progressbar(outer, mode="determinate")
         self.status = ttk.Label(outer, text="", style="Muted.TLabel")
         self.status.pack(anchor="w", pady=(8, 0))
@@ -226,6 +235,9 @@ class App:
             sheet = load_sheet(path, sheet_name)
         except SpreadsheetError as e:
             messagebox.showerror("Can't read that spreadsheet", str(e), parent=self.root)
+            return
+        if looks_like_meal_file(sheet):  # the Label Data export goes to Meal Labels, not the pack slips
+            self.open_meal_labels(sheet)
             return
         if self.sheet is not None and self.mapping is not None and looks_like_route_file(sheet) and \
                 self._fit(self.tpl_var.get(), sheet) <= 0:
@@ -483,6 +495,8 @@ class App:
         self.label_var.set(want if want in labels else (labels[0] if labels else ""))
         if self.label_var.get() != self.settings.get("label_layout"):
             self._label_chosen()
+        if self._meal_window is not None and self._meal_window.winfo_exists():
+            self._meal_window.refresh_layouts()
 
     def _label_chosen(self):
         self.settings["label_layout"] = self.label_var.get()
@@ -521,13 +535,15 @@ class App:
         """Open the layout editor on `name` (default: the selected pack-slip layout)."""
         name = name or self.tpl_var.get()
         if getattr(self, "_designer", None) is not None and self._designer.winfo_exists():
+            self._designer._meal_sheet = self.meal_sheet
             self._designer._switch_template(name)
             self._designer.lift()
             return
         mapping = load_mapping(name) or Mapping()
         self._designer = Designer(self.root, name, mapping, self.sheet,
                                   extra_values=self.delivery_values,
-                                  on_close=lambda closed: self._refresh_templates(closed))
+                                  on_close=lambda closed: self._refresh_templates(closed),
+                                  meal_sheet=self.meal_sheet)
 
     def edit_label(self):
         if self.label_var.get():
@@ -538,13 +554,22 @@ class App:
             self.status.configure(text=self.status.cget("text") or "Load a spreadsheet to get started.")
 
     # ------------------------------------------------------------ generate
-    def _output_path(self, prefix: str = "Pack Slips") -> Path:
-        out = default_output_path(self.sheet.path, self.date_picker.value, prefix)
+    def _output_path(self, prefix: str = "Pack Slips", sheet: Sheet | None = None) -> Path:
+        """Next to the spreadsheet (default: the orders), or in Documents/Pack Slips if that's read-only."""
+        src = (sheet or self.sheet).path
+        out = default_output_path(src, self.date_picker.value, prefix)
         if os.access(out.parent, os.W_OK):
             return out
         fallback = Path.home() / "Documents" / "Pack Slips"
         fallback.mkdir(parents=True, exist_ok=True)
-        return default_output_path(fallback / self.sheet.path.name, self.date_picker.value, prefix)
+        return default_output_path(fallback / src.name, self.date_picker.value, prefix)
+
+    def open_meal_labels(self, sheet: Sheet | None = None):
+        if self._meal_window is None or not self._meal_window.winfo_exists():
+            self._meal_window = MealLabelsWindow(self.root, self)
+        self._meal_window.lift()
+        if sheet is not None:
+            self._meal_window.use_sheet(sheet)
 
     def _ready_to_generate(self) -> bool:
         """A spreadsheet is loaded (re-read for last-minute edits) and its columns are matched."""

@@ -109,3 +109,31 @@ def test_meal_layouts_render_like_the_photos(tmp_path):
     for s in ("Date: 10/25/26", "Zoe Adams", "Bacon Jam Turkey Burger", "Size: Regular", "Cals: 720", "P: 40",
               "C: 48", "F: 27"):
         assert s in text, s
+
+
+def test_generate_meal_labels_picks_layout_sorts_and_filters(tmp_path):
+    from pypdf import PdfReader
+    from packslip import template as T
+    from packslip.pdfgen import generate_meal_labels
+    sheet = _sheet(tmp_path)
+    out = tmp_path / "meal.pdf"
+    n = generate_meal_labels(out, sheet, T.custom_meal_template(), T.regular_meal_template(),
+                             sort=[("product", False), ("size", False), ("last_name", False)],
+                             extra={"delivery_date_short": "10/25/26"})
+    pages = [p.extract_text() for p in PdfReader(out).pages]
+    assert n == 6 == len(pages)                                      # every row, nothing skipped
+    assert "$10 delivery" in pages[0]                                 # A-Z by product ("$" sorts first)
+    assert "Bacon Jam Turkey Burger" in pages[1] and "Size: Regular" in pages[1] and "Size: Small" in pages[2]
+    assert "Custom Beef" in pages[3] and "Ground beef 5oz" in pages[3] and "Size:" not in pages[3]   # custom layout
+    assert all(float(PdfReader(out).pages[i].mediabox.height) == 360.0 for i in range(n))            # 3 x 5 in
+    n = generate_meal_labels(tmp_path / "f.pdf", sheet, T.custom_meal_template(), T.regular_meal_template(),
+                             filters={"kinds": {"custom"}})
+    assert n == 3
+
+
+def test_meal_file_is_recognised(tmp_path):
+    from packslip.meal_labels import looks_like_meal_file
+    assert looks_like_meal_file(_sheet(tmp_path))
+    p = tmp_path / "orders.csv"
+    p.write_text("Order,Customer,Product,Quantity,Full Address\n1,Ann,Oats,1,1 A St\n")
+    assert not looks_like_meal_file(load(p))

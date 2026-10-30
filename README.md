@@ -241,6 +241,25 @@ loaded spreadsheet and the selected pack-slip layout's column matches; nothing e
 - New field **Last, First Name** (`last_first`). Variations: Duplicate the label layout in Edit Layout.
 - Print on the Zebra at **Actual size (100%)**.
 
+## Meal labels (one per container)
+
+**Meal Labels…** on the main window (or drop the *Fulfillment Label Data* CSV on it) opens the Meal Labels
+window. The export has one row per container: Customer, Product, Variant, Modifiers, Price, Calories, Protein,
+Carbs, Fat, How to Prepare (`packslip/meal_labels.py`, deterministic, nothing skipped).
+
+- **Custom meals** (Product starts with "Custom"): Modifiers are split at semicolons and "(1x)" removed.
+  Fields: Custom Item 1–6 (in the order listed, as the Operator's spreadsheet does), Custom Protein / Carb /
+  Veg / Sauce (by fixed word lists), Day and Meal ("Day 1", "Meal 2"; blank unless the meal has them).
+- **Every label:** Customer, First / Last Name, Product, Size, Price, Calories, Protein (g), Carbs (g), Fat (g),
+  How to Prepare, Delivery Date and Delivery Date (10/25/26).
+- **Layouts:** a *meal* layout kind in the label designer with **Use for** (Custom / Regular / All meals) and a
+  3 × 5 in page. Built-in **Custom Meal Label** (four boxed ingredient rows) and **Regular Meal Label**
+  (size, calories and macros) follow the Operator's labels; duplicate them for variations.
+- **Sort:** up to three of Product / Size / Customer last name / Customer first name, each A→Z or Z→A
+  (default Product → Size → Customer last name). **Filters:** custom / regular, skip products containing
+  words, only certain customers or products. Choices are remembered.
+- Output: `Meal Labels - <file> - delivery <date>.pdf`, one page per label. Print at Actual size.
+
 ## Real spreadsheet format
 
 The weekly Google Sheet (downloaded as .xlsx) has **one row per customer** and **one column per

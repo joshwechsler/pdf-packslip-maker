@@ -325,6 +325,35 @@ def generate_labels(out_path: str | Path, template: Template, mapping: Mapping, 
     return labels
 
 
+def generate_meal_labels(out_path: str | Path, sheet: Sheet, custom_template: Template, regular_template: Template,
+                         sort: list[tuple[str, bool]] | None = None, filters: dict | None = None,
+                         extra: dict | None = None) -> int:
+    """Meal labels from the Label Data export: one page per row (after filters), in the chosen sort
+    order; custom meals use custom_template, the rest regular_template. Returns the number of labels."""
+    from .meal_labels import MealFields, filter_records, guess_meal_columns, read_records, sort_records
+    out_path = Path(out_path)
+    cols = guess_meal_columns(sheet.headers)
+    if not cols.product:
+        raise GenerateError("This file has no Product column, so it doesn't look like the meal label export.")
+    records = sort_records(filter_records(read_records(sheet, cols), **(filters or {})), sort or [])
+    if not records:
+        raise GenerateError("No labels to make: the filters leave nothing from this file.\n\n"
+                            "Check “Custom meals” / “Regular meals” and the other filters.")
+    fields = MealFields(cols)
+    images = _ImageCache(storage.assets_dir())
+    with _saving(out_path) as tmp:
+        c = rl_canvas.Canvas(str(tmp), pagesize=regular_template.page_size, pageCompression=1)
+        c.setTitle(f"Meal Labels – {sheet.path.stem}")
+        c.setCreator(APP_NAME)
+        for rec in records:
+            tpl = custom_template if rec["kind"] == "custom" else regular_template
+            c.setPageSize(tpl.page_size)
+            draw_page(c, tpl, {**rec, **(extra or {})}, fields, images)
+            c.showPage()
+        c.save()
+    return len(records)
+
+
 def render_preview_pdf(out_path: str | Path, template: Template, mapping: Mapping,
                        values: dict[str, str]) -> None:
     w, h = template.page_size

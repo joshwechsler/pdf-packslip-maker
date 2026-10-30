@@ -107,6 +107,13 @@ def guess_meal_columns(headers: list[str]) -> MealColumns:
     return MealColumns(**guess_columns(spec, headers))
 
 
+def looks_like_meal_file(sheet: Sheet) -> bool:
+    """The Label Data export: product + nutrition/heating columns, and no delivery address."""
+    heads = {h.strip().lower() for h in sheet.headers}
+    return "product" in heads and bool(heads & {"calories", "how to prepare"}) and not any(
+        "address" in h for h in heads)
+
+
 def is_custom(product: str) -> bool:
     return product.strip().lower().startswith("custom")
 

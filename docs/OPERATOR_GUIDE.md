@@ -15,7 +15,7 @@
 4. Check the **Delivery date**. It remembers your usual delivery day, so normally it's already right. Use the dropdown or **Calendar…** to change it. This date prints on every slip.
 5. Optional, drivers: drag in your **driver list** (or click **Driver List…**) and check the columns. Each slip then shows its driver, and the PDF starts with each driver's delivery list.
 6. Click **Generate Pack Slips for (date)**.
-7. Click **Open PDF to Print**, then press **⌘P**. Pickup bag labels: **Generate Bag Labels**, print on the Zebra at **Actual size**.
+7. Click **Open PDF to Print**, then press **⌘P**. Pickup bag labels: **Generate Bag Labels**, print on the Zebra at **Actual size**. Meal labels: drop the Label Data file in, then **Generate Meal Labels**.
 
 The PDF is saved in the **same folder as your spreadsheet**, named **Pack Slips – (spreadsheet name) – delivery (date).pdf**.
 
