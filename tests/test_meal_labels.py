@@ -74,3 +74,38 @@ def test_sort_and_filter(tmp_path):
     assert len(kept) == 5 and not any(r["product"].startswith("$") for r in kept)
     assert {r["customer_name"] for r in filter_records(recs, customers=["ann lee"])} == {"Ann Lee"}
     assert [r["product"] for r in filter_records(recs, products=["custom beef"])] == ["Custom Beef"]
+
+
+def test_meal_layouts_kind_size_and_round_trip():
+    from packslip import template as T
+    T.ensure_default_template()
+    assert T.list_templates(T.MEAL) == ["Custom Meal Label", "Regular Meal Label"]
+    assert "Custom Meal Label" not in T.list_templates(T.SLIP) + T.list_templates(T.LABEL)
+    c = T.load_template("Custom Meal Label")
+    assert c.kind == T.MEAL and c.meal_for == "custom" and c.page_size == (216.0, 360.0)   # 3 x 5 in
+    assert T.load_template("Regular Meal Label").meal_for == "regular"
+    c.meal_for = "all"
+    T.save_template(c)
+    assert T.load_template("Custom Meal Label").meal_for == "all"
+
+
+def test_meal_layouts_render_like_the_photos(tmp_path):
+    from pypdf import PdfReader
+    from packslip import template as T
+    from packslip.meal_labels import MealFields, guess_meal_columns
+    from packslip.pdfgen import render_preview_pdf
+    sheet = _sheet(tmp_path)
+    fields = MealFields(guess_meal_columns(sheet.headers))
+    extra = {"delivery_date_short": "10/25/26"}
+    out = tmp_path / "c.pdf"
+    render_preview_pdf(out, T.custom_meal_template(), fields, {**fields.values_for_row(sheet.rows[3]), **extra})
+    text = PdfReader(out).pages[0].extract_text()
+    for s in ("Date: 10/25/26", "Cy Putt", "Custom Ground Beef TFLC", "Ground Beef 3.4 oz", "Whole Wheat Pasta 1.8 Cup",
+              "Spinach 1 Cup", "Day 1", "Meal 3"):
+        assert s in text, s
+    out = tmp_path / "r.pdf"
+    render_preview_pdf(out, T.regular_meal_template(), fields, {**fields.values_for_row(sheet.rows[0]), **extra})
+    text = PdfReader(out).pages[0].extract_text()
+    for s in ("Date: 10/25/26", "Zoe Adams", "Bacon Jam Turkey Burger", "Size: Regular", "Cals: 720", "P: 40",
+              "C: 48", "F: 27"):
+        assert s in text, s

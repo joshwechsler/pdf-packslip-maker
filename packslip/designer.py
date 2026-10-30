@@ -24,6 +24,7 @@ from .mapping import COMPUTED_KEYS, ITEMS_KEY, Mapping, copy_mapping, delete_map
 from .drivers import is_pickup
 from .pdfgen import item_total, bag_count, render_preview_pdf
 from .spreadsheet import Sheet
+from .meal_labels import MealFields, guess_meal_columns
 from .snapping import snap_edge, snap_move, targets
 from .ui_common import IS_MAC, ColorSwatch, ask_name, open_path
 
@@ -40,13 +41,15 @@ PT_PER_IN = 72.0
 
 class Designer(tk.Toplevel):
     def __init__(self, master, template_name: str, mapping: Mapping, sheet: Sheet | None, on_close=None,
-                 extra_values=None):
+                 extra_values=None, meal_sheet: Sheet | None = None):
         super().__init__(master)
         self.title("Edit Layout")
         self.geometry("1180x820")
         self.minsize(960, 640)
         self.mapping = mapping
         self.sheet = sheet
+        # Meal-label layouts preview the meal label file and use its fields; other layouts use the orders.
+        self._orders_sheet, self._meal_sheet = sheet, meal_sheet
         self.on_close = on_close
         self.extra_values = extra_values  # callable -> dict, e.g. the chosen delivery date
         self.preview_index = 0
@@ -62,6 +65,8 @@ class Designer(tk.Toplevel):
         self.ox = self.oy = MARGIN
 
         self.tpl = T.load_template(template_name) or T.default_template(template_name)
+        if self.tpl.kind == T.MEAL:
+            self.sheet, self.mapping = self._meal_sheet, self._meal_fields()
 
         self._build_toolbar()
         body = ttk.Frame(self)
@@ -163,22 +168,34 @@ class Designer(tk.Toplevel):
             self.brand_swatches[key] = sw
         ttk.Label(p, text="Items set to a brand color update when you change it here.",
                   foreground="#666666", wraplength=290).pack(anchor="w", pady=(0, 6))
-        bags = ttk.Frame(p)
-        bags.pack(fill="x", pady=(4, 0))
+        # Settings for one kind of layout only; _show_kind_options shows the right ones.
+        self.kind_box = ttk.Frame(p)
+        self.kind_box.pack(fill="x")
+        bags = self.bags_row = ttk.Frame(self.kind_box)
         ttk.Label(bags, text="Max items per bag").pack(side="left")
         self.bag_var = tk.StringVar(value=str(self.tpl.bag_size))
         ttk.Spinbox(bags, from_=0, to=99, increment=1, textvariable=self.bag_var, width=4).pack(side="left", padx=8)
         self.bag_var.trace_add("write", lambda *_: self._set_bag_size())
-        self.bag_help = ttk.Label(p, text="", foreground="#666666", wraplength=290)
-        self.bag_help.pack(anchor="w", pady=(2, 6))
+        self.bag_help = ttk.Label(self.kind_box, text="", foreground="#666666", wraplength=290)
         # Bag-label layouts only: which orders get labels.
-        self.label_opts = ttk.Frame(p)
+        self.label_opts = ttk.Frame(self.kind_box)
         ttk.Label(self.label_opts, text="Labels for").pack(side="left")
         self.label_orders_var = tk.StringVar()
         lo = ttk.Combobox(self.label_opts, textvariable=self.label_orders_var, values=list(T.LABEL_ORDERS.values()),
                           state="readonly", width=16)
         lo.pack(side="left", padx=8)
         lo.bind("<<ComboboxSelected>>", lambda e: self._set_label_orders())
+        # Meal-label layouts only: which meals use this layout.
+        self.meal_opts = ttk.Frame(self.kind_box)
+        ttk.Label(self.meal_opts, text="Use for").pack(side="left")
+        self.meal_for_var = tk.StringVar()
+        mf = ttk.Combobox(self.meal_opts, textvariable=self.meal_for_var, values=list(T.MEAL_FOR.values()),
+                          state="readonly", width=16)
+        mf.pack(side="left", padx=8)
+        mf.bind("<<ComboboxSelected>>", lambda e: self._set_meal_for())
+        self.meal_help = ttk.Label(self.kind_box, text="Custom meals = Product starts with \u201cCustom\u201d. "
+                                   "Fields that are blank for a meal (e.g. Day, Meal) don't print.",
+                                   foreground="#666666", wraplength=290)
         self._show_kind_options()
         ttk.Separator(p).pack(fill="x", pady=8)
         self.props = ttk.Frame(p)
@@ -594,16 +611,34 @@ class Designer(tk.Toplevel):
                                 "Drag them back on, or delete them.", parent=self)
 
     def _show_kind_options(self):
-        """Settings that differ between pack-slip and bag-label layouts."""
+        """Settings that differ between pack-slip, bag-label and meal-label layouts."""
+        for w in self.kind_box.winfo_children():
+            w.pack_forget()
+        if self.tpl.kind == T.MEAL:
+            self.meal_for_var.set(T.MEAL_FOR[self.tpl.meal_for])
+            self.meal_opts.pack(anchor="w", pady=(4, 0))
+            self.meal_help.pack(anchor="w", pady=(2, 6))
+            return
+        self.bags_row.pack(fill="x", pady=(4, 0))
+        self.bag_help.pack(anchor="w", pady=(2, 6))
         if self.tpl.kind == T.LABEL:
             self.bag_help.configure(text="One label per bag (\u201cBag 2/3\u201d), A\u2013Z by last name. "
                                          "0 = one label per order.")
             self.label_orders_var.set(T.LABEL_ORDERS[self.tpl.label_orders])
-            self.label_opts.pack(anchor="w", pady=(0, 6), after=self.bag_help)
+            self.label_opts.pack(anchor="w", pady=(0, 6))
         else:
             self.bag_help.configure(text="Bigger delivery orders get an extra slip per bag (\u201cBag: 2/2\u201d). "
                                          "Items ticked \u201cFirst bag only\u201d are left off the extra slips. 0 = off.")
-            self.label_opts.pack_forget()
+
+    def _set_meal_for(self):
+        key = next(k for k, v in T.MEAL_FOR.items() if v == self.meal_for_var.get())
+        if key != self.tpl.meal_for:
+            self.tpl.meal_for = key
+            self._mark_dirty()
+
+    def _meal_fields(self) -> MealFields:
+        sheet = self._meal_sheet
+        return MealFields(guess_meal_columns(sheet.headers) if sheet else None)
 
     def _set_label_orders(self):
         key = next(k for k, v in T.LABEL_ORDERS.items() if v == self.label_orders_var.get())
@@ -866,7 +901,10 @@ class Designer(tk.Toplevel):
 
     def _load(self, tpl: T.Template):
         self.tpl = tpl
-        self.mapping = load_mapping(tpl.name) or Mapping()  # each layout has its own column matches
+        if tpl.kind == T.MEAL:  # meal labels: the meal label file's fields
+            self.sheet, self.mapping = self._meal_sheet, self._meal_fields()
+        else:  # each pack-slip / bag-label layout has its own column matches
+            self.sheet, self.mapping = self._orders_sheet, load_mapping(tpl.name) or Mapping()
         self._rebuild_field_menu()
         self.selected = None
         self.dirty = False

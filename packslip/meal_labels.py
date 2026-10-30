@@ -136,24 +136,54 @@ def split_custom(modifiers: str) -> dict:
     return out
 
 
-def read_records(sheet: Sheet, cols: MealColumns | None = None) -> list[dict]:
-    """One record (dict of label fields) per row, in file order. Nothing is skipped."""
-    cols = cols or guess_meal_columns(sheet.headers)
-
-    def get(row, key):
+def record_from_row(row: dict, cols: MealColumns, index: int = 0) -> dict:
+    """All label fields for one row of the export."""
+    def get(key):
         col = getattr(cols, key)
         return (row.get(col, "") if col else "").strip()
 
-    records = []
-    for i, row in enumerate(sheet.rows):
-        rec = {key: get(row, key) for key, _, _ in MEAL_COLUMN_FIELDS}
-        rec["customer_name"] = rec.pop("customer")
-        first, last = split_name(rec["customer_name"])
-        rec.update(first_name=first, last_name=last, last_first=", ".join(x for x in (last, first) if x),
-                   kind="custom" if is_custom(rec["product"]) else "regular", row_index=i)
-        rec.update(split_custom(rec["modifiers"]) if rec["kind"] == "custom" else split_custom(""))
-        records.append(rec)
-    return records
+    rec = {key: get(key) for key, _, _ in MEAL_COLUMN_FIELDS}
+    rec["customer_name"] = rec.pop("customer")
+    first, last = split_name(rec["customer_name"])
+    rec.update(first_name=first, last_name=last, last_first=", ".join(x for x in (last, first) if x),
+               kind="custom" if is_custom(rec["product"]) else "regular", row_index=index)
+    rec.update(split_custom(rec["modifiers"]) if rec["kind"] == "custom" else split_custom(""))
+    return rec
+
+
+def read_records(sheet: Sheet, cols: MealColumns | None = None) -> list[dict]:
+    """One record (dict of label fields) per row, in file order. Nothing is skipped."""
+    cols = cols or guess_meal_columns(sheet.headers)
+    return [record_from_row(row, cols, i) for i, row in enumerate(sheet.rows)]
+
+
+class MealFields:
+    """The meal-label field list, shaped like a pack-slip Mapping so the layout editor and the
+    PDF renderer can use it unchanged (field menu, labels, placeholders, preview rows)."""
+    items_mode = "single"
+
+    def __init__(self, cols: MealColumns | None = None):
+        self.cols = cols or MealColumns()
+        self.fields = [{"key": k, "label": label, "sample": sample} for k, label, sample in MEAL_LABEL_FIELDS]
+        self.columns = {k: k for k, _, _ in MEAL_LABEL_FIELDS}  # every field is always available
+
+    def all_fields(self) -> list[dict]:
+        return self.fields
+
+    def field_label(self, key: str) -> str:
+        return next((f["label"] for f in self.fields if f["key"] == key), key)
+
+    def records(self, rows: list[dict]) -> list[dict]:
+        return list(rows)
+
+    def values_for_row(self, row: dict) -> dict:
+        return record_from_row(row, self.cols)
+
+    def sample_values(self) -> dict:
+        return {f["key"]: f["sample"] for f in self.fields}
+
+    def is_empty(self) -> bool:
+        return False
 
 
 # Sort keys the Operator can choose (label shown in the app -> record key).

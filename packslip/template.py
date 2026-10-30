@@ -29,11 +29,15 @@ PAGE_SIZES = {
     "Label (2.25 × 1 in)": (162.0, 72.0),
     "Label (2.25 × 1.25 in)": (162.0, 90.0),
     "Label (4 × 2 in)": (288.0, 144.0),
+    "Label (3 × 5 in)": (216.0, 360.0),
 }
 DEFAULT_PAGE = "Letter (8.5 × 11 in)"
 ORIENTATIONS = ["Portrait", "Landscape"]
 # Layout kinds: pack slips (one page per order) and bag labels (one small label per bag).
-SLIP, LABEL = "slip", "label"
+SLIP, LABEL, MEAL = "slip", "label", "meal"
+KINDS = (SLIP, LABEL, MEAL)
+# Which meals a meal-label layout is used for (Product starting with "Custom" = custom).
+MEAL_FOR = {"custom": "Custom meals", "regular": "Regular meals", "all": "All meals"}
 # Which orders a bag-label layout prints labels for.
 LABEL_ORDERS = {"pickup": "Pickup orders", "delivery": "Delivery orders", "all": "All orders"}
 
@@ -100,6 +104,7 @@ class Template:
     bag_size: int = 0   # max items per bag; bigger orders get extra slips (0 = off)
     kind: str = SLIP
     label_orders: str = "pickup"   # bag labels only: which orders get labels
+    meal_for: str = "all"          # meal labels only: which meals use this layout
 
     @property
     def page_size(self) -> tuple[float, float]:
@@ -129,7 +134,7 @@ class Template:
     def to_json(self) -> dict:
         return {"version": 1, "name": self.name, "page": self.page, "orientation": self.orientation,
                 "bag_size": self.bag_size, "kind": self.kind,
-                "label_orders": self.label_orders, "brand": self.brand, "elements": self.elements, "upgrades": self.upgrades}
+                "label_orders": self.label_orders, "meal_for": self.meal_for, "brand": self.brand, "elements": self.elements, "upgrades": self.upgrades}
 
     @classmethod
     def from_json(cls, data: dict) -> "Template":
@@ -143,12 +148,13 @@ class Template:
                 upgrades=list(data.get("upgrades") or []),
                 landscape=str(data.get("orientation", "")).lower() == "landscape",
                 bag_size=_int(data.get("bag_size")),
-                kind=LABEL if data.get("kind") == LABEL else SLIP,
+                kind=data.get("kind") if data.get("kind") in KINDS else SLIP,
+                meal_for=data.get("meal_for") if data.get("meal_for") in MEAL_FOR else "all",
                 label_orders=data.get("label_orders") if data.get("label_orders") in LABEL_ORDERS else "pickup")
         if t.kind == SLIP:
             _upgrade_pickup_and_access(t)
             _upgrade_driver(t)
-        else:
+        elif t.kind == LABEL:
             _upgrade_pickup_bag_size(t)
         return t
 
@@ -354,6 +360,53 @@ def pickup_label_template(name: str = LABEL_NAME) -> Template:
                     bag_size=6, kind=LABEL, label_orders="pickup")
 
 
+CUSTOM_MEAL_NAME, REGULAR_MEAL_NAME = "Custom Meal Label", "Regular Meal Label"
+
+
+def _meal_header(bold_name: bool) -> list[dict]:
+    """Date, customer and product with dividing lines, as on the Operator's 3 × 5 in labels."""
+    E = make_element
+    serif = {"font": "Times", "color": "#000000"}
+    return [
+        E("field", 18, 78, 180, 20, field="delivery_date_short", label="Date:", size=15, **serif),
+        E("box", 0, 100, 216, 1.2, fill="#000000"),
+        E("field", 18, 106, 180, 22, field="customer_name", size=15, bold=bold_name, **serif),
+        E("box", 0, 132, 216, 1.2, fill="#000000"),
+        E("field", 8, 139, 200, 22, field="product", size=16, bold=True, align="center", **serif),
+        E("box", 0, 164, 216, 1.2, fill="#000000"),
+    ]
+
+
+def custom_meal_template(name: str = CUSTOM_MEAL_NAME) -> Template:
+    """3 × 5 in label for custom meals: four boxed ingredient rows, then Day / Meal (blank unless the
+    meal has them). Ingredients are in the order listed; "Custom Protein/Carb/Veg/Sauce" are also available."""
+    E = make_element
+    els = _meal_header(bold_name=True)
+    for n in range(4):
+        y = 186 + n * 32
+        els.append(E("box", 20, y, 176, 32, fill="", border="#000000", border_width=1.2))
+        els.append(E("field", 26, y + 7, 166, 20, field=f"item_{n + 1}", size=14, font="Times", color="#000000"))
+    els += [E("field", 20, 326, 84, 20, field="day", size=14, font="Times", color="#000000"),
+            E("field", 112, 326, 84, 20, field="meal", size=14, font="Times", color="#000000")]
+    return Template(name=name, page="Label (3 × 5 in)", elements=els, upgrades=["pickup_access", "driver"],
+                    kind=MEAL, meal_for="custom")
+
+
+def regular_meal_template(name: str = REGULAR_MEAL_NAME) -> Template:
+    """3 × 5 in label for regular meals: size, then calories and macros on one line."""
+    E = make_element
+    serif = {"font": "Times", "color": "#000000", "size": 15}
+    els = _meal_header(bold_name=False) + [
+        E("field", 18, 170, 180, 20, field="size", label="Size:", **serif),
+        E("field", 18, 196, 70, 20, field="calories", label="Cals:", **serif),
+        E("field", 90, 196, 40, 20, field="protein_g", label="P:", **serif),
+        E("field", 132, 196, 40, 20, field="carbs_g", label="C:", **serif),
+        E("field", 174, 196, 40, 20, field="fat_g", label="F:", **serif),
+    ]
+    return Template(name=name, page="Label (3 × 5 in)", elements=els, upgrades=["pickup_access", "driver"],
+                    kind=MEAL, meal_for="regular")
+
+
 # -- persistence -------------------------------------------------------------
 
 def template_path(name: str) -> Path:
@@ -365,7 +418,7 @@ def list_templates(kind: str | None = None) -> list[str]:
     names = []
     for p in sorted(storage.templates_dir().glob("*.json")):
         data = storage.read_json(p)
-        if isinstance(data, dict) and (kind is None or (LABEL if data.get("kind") == LABEL else SLIP) == kind):
+        if isinstance(data, dict) and (kind is None or (data.get("kind") if data.get("kind") in KINDS else SLIP) == kind):
             names.append(data.get("name") or p.stem)
     return sorted(set(names), key=str.lower)
 
@@ -414,6 +467,13 @@ def install_builtin_layouts() -> list[str]:
             copy_mapping(src if template_path(src).exists() else "Standard", LANDSCAPE_NAME)
             added.append(LANDSCAPE_NAME)
         storage.save_settings(settings)
+    for meal_name, make in ((CUSTOM_MEAL_NAME, custom_meal_template), (REGULAR_MEAL_NAME, regular_meal_template)):
+        if meal_name not in done:
+            done.append(meal_name)
+            if not template_path(meal_name).exists():
+                save_template(make())
+                added.append(meal_name)
+            storage.save_settings(settings)
     if LABEL_NAME not in done:
         done.append(LABEL_NAME)
         if not template_path(LABEL_NAME).exists():

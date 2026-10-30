@@ -499,7 +499,8 @@ class App:
         return self.settings.get("delivery_weekday_by_layout", {}).get(layout, self.settings.get("delivery_weekday"))
 
     def delivery_values(self) -> dict:
-        return {"delivery_date": format_delivery_date(self.date_picker.value)}
+        d = self.date_picker.value
+        return {"delivery_date": format_delivery_date(d), "delivery_date_short": f"{d:%m/%d/%y}"}
 
     def _template_chosen(self):
         name = self.tpl_var.get()
