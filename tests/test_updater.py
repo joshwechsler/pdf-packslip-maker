@@ -106,8 +106,13 @@ def test_parse_manifest():
     assert updater.parse_manifest({"oops": 1}, current_build=1) is None
 
 
-def test_version_follows_the_build(monkeypatch):
-    from packslip import MAJOR, version_for
-    assert MAJOR == 1 and version_for(39) == "1.39" and version_for(40) == "1.40"
-    monkeypatch.setenv("PACKSLIP_PRETEND_BUILD", "39")
-    assert updater.describe_current() == "version 1.39"
+def test_version_shown_and_carried_in_the_manifest(monkeypatch):
+    monkeypatch.setattr(updater, "VERSION", "2.1.0")
+    monkeypatch.setenv("PACKSLIP_PRETEND_BUILD", "40")
+    assert updater.describe_current() == "version 2.1.0"
+    monkeypatch.setattr(updater, "VERSION", "")                # a build from before automatic versions
+    assert updater.describe_current() == "build 40"
+    info = updater.parse_manifest({"build": 41, "version": "2.1.1", "sha256": "", "size": 1}, 40)
+    assert info.version == "2.1.1" and info.describe() == "version 2.1.1"
+    old = updater.parse_manifest({"build": 41, "sha256": "", "size": 1}, 40)
+    assert old.describe() == "build 41"

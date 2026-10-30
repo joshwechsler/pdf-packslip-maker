@@ -12,7 +12,7 @@ import traceback
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import APP_NAME, __version__, diagnostics, storage, updater, version_for
+from . import APP_NAME, __version__, diagnostics, storage, updater
 from . import template as T
 from .designer import Designer
 from .drivers import DriverBook, customer_key
@@ -717,7 +717,7 @@ class App:
             return
         choice = ask_choice(
             self.root, "Update available",
-            f"A new version of {APP_NAME} is ready (version {version_for(info.build)}; you have {updater.describe_current()}).\n\n"
+            f"A new version of {APP_NAME} is ready ({info.describe()}; you have {updater.describe_current()}).\n\n"
             "Updating takes about a minute. The app closes and reopens by itself. Your layouts, column "
             "matches and logos are kept.",
             ["Update Now", "Later"])

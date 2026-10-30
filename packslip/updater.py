@@ -29,7 +29,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import APP_NAME, version_for
+from . import APP_NAME, VERSION
 
 REPO = "joshwechsler/pdf-packslip-maker"
 ASSET_NAME = "Packs-Be-Slippin-mac.zip"
@@ -53,6 +53,10 @@ class UpdateInfo:
     size: int
     sha256: str  # "" if GitHub didn't report one
     notes: str = ""
+    version: str = ""  # e.g. "2.4.1"; "" for releases from before automatic versions
+
+    def describe(self) -> str:
+        return f"version {self.version}" if self.version else f"build {self.build}"
 
 
 def parse_release(data: dict, current_build: int = BUILD) -> UpdateInfo | None:
@@ -133,7 +137,7 @@ def _fetch(url: str, timeout: int, dest: Path | None = None, accept: str = "") -
 
 
 def parse_manifest(data: dict, current_build: int) -> UpdateInfo | None:
-    """UpdateInfo from latest.json ({"build", "asset", "sha256", "size"}) if newer than current_build."""
+    """UpdateInfo from latest.json ({"build", "version", "asset", "sha256", "size"}) if newer than current_build."""
     try:
         build = int(data["build"])
     except (KeyError, TypeError, ValueError):
@@ -143,7 +147,7 @@ def parse_manifest(data: dict, current_build: int) -> UpdateInfo | None:
     asset = data.get("asset") or ASSET_NAME
     return UpdateInfo(build=build, url=f"https://github.com/{REPO}/releases/download/build-{build}/{asset}",
                       size=int(data.get("size") or 0), sha256=str(data.get("sha256") or ""),
-                      notes=str(data.get("notes") or ""))
+                      notes=str(data.get("notes") or ""), version=str(data.get("version") or ""))
 
 
 def check_for_update(timeout: int = 10, raise_errors: bool = False) -> UpdateInfo | None:
@@ -263,4 +267,6 @@ def prepare_update(info: UpdateInfo) -> tuple[Path, Path, Path]:
 
 
 def describe_current() -> str:
-    return f"version {version_for(current_build())}" if current_build() else "development copy"
+    if not current_build():
+        return "development copy"
+    return f"version {VERSION}" if VERSION else f"build {current_build()}"

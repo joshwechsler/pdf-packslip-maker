@@ -2,15 +2,14 @@
 
 APP_NAME = "Packs Be Slippin'"
 LEGACY_APP_NAME = "Pack Slip Maker"  # earlier name; its saved settings are migrated
-# Version = MAJOR.BUILD, e.g. 1.39. BUILD goes up with every update (CI writes it to _build.py).
-# Change MAJOR only for a big milestone (e.g. a redesign, or saved layouts needing conversion).
-MAJOR = 1
+# Version = MAJOR.FEATURES.FIXES (e.g. 2.4.1), worked out by tools/version.py from the labels on saved
+# changes and written by CI to _build.py with BUILD (the updater compares BUILD, which goes up every update).
 try:
     from ._build import BUILD
 except ImportError:  # running from source
     BUILD = 0
-__version__ = f"{MAJOR}.{BUILD}"
-
-
-def version_for(build: int) -> str:
-    return f"{MAJOR}.{build}"
+try:
+    from ._build import VERSION
+except ImportError:  # running from source, or a build from before automatic versions
+    VERSION = ""
+__version__ = VERSION or "0.0.0"

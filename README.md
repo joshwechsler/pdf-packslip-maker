@@ -107,6 +107,21 @@ CI (`.github/workflows/build-macos.yml`) builds on every push. To build locally 
 `packaging/hooks/hook-tkinterdnd2.py` replaces the stock hook so both the Intel and
 Apple Silicon drag-and-drop libraries are bundled.
 
+## Version numbers
+
+The app shows **Version MAJOR.FEATURES.FIXES**, e.g. 2.4.1, worked out automatically on every build by
+`tools/version.py` from the labels on saved changes since `MAJOR_VERSION` last changed:
+
+| Change label | Example |
+| --- | --- |
+| `feat:` (new feature) | 2.3.1 → 2.4.0 |
+| `fix:` or `change:` | 2.4.0 → 2.4.1 |
+| anything else (`refactor:`, `test:`) | no change |
+
+`MAJOR_VERSION` (now 2) is changed by hand only for a big milestone; that resets to X.0.0. Edits made inside the
+app (layouts, settings) never change the version. The hidden build number still goes up with every update, and
+that is what the updater compares.
+
 ## Updates (in-app)
 
 Every successful build of `claude/packslip-app` or `main` publishes a GitHub Release tagged
