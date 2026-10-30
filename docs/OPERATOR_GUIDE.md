@@ -9,11 +9,12 @@
 
 ## Every week (about 2 minutes)
 
-1. Download this week's files: the **orders** export and the **Label Data** export (plus your **driver list** if you use one).
-2. Open **Packs Be Slippin'** and drag each file onto its box: **Orders CSV**, **Driver list** (optional), **Meal label CSV**. (Or click **Browse…** on the box. A file dropped anywhere else on the window goes to the right box by itself.)
-3. Check the **Delivery date**. It remembers your usual delivery day. It prints on every slip and label.
-4. Click **Generate Pack Slips**, **Generate Bag Labels** and/or **Generate Meal Labels**. Each uses the template picked next to it.
-5. Click **Open PDF to Print**, then **⌘P**. Labels: print at **Actual size (100%)**.
+1. Download the **orders** export and the **Label Data** export.
+2. Drag each file onto its box: **Orders CSV**, **Meal label CSV** (or **Browse…**).
+3. Check the **Delivery date** (it prints on every slip and label).
+4. **Generate Delivery Report** makes the file for the delivery software. Upload it, add drivers, then drop the file you get back on **Driver list**.
+5. Click **Generate Pack Slips**, **Generate Bag Labels** and/or **Generate Meal Labels**.
+6. Click **Open PDF to Print**, then **⌘P**. Labels: print at **Actual size (100%)**.
 
 PDFs are saved **next to the file they came from**, e.g. **Pack Slips – (file name) – delivery (date).pdf**.
 

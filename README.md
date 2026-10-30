@@ -250,6 +250,25 @@ loaded spreadsheet and the selected pack-slip layout's column matches; nothing e
 - New field **Last, First Name** (`last_first`). Variations: Duplicate the label layout in Templates.
 - Print on the Zebra at **Actual size (100%)**.
 
+## Delivery report (for the delivery software)
+
+**Generate Delivery Report** (top job row) turns the Orders CSV into the delivery software's 15-column upload CSV
+(`packslip/delivery_report.py`, deterministic): `Route#, Order, Customer, Customer First Name, Customer Last Name,
+Fulfillment Date, Location, City, Full Address, Customer Email, Customer Phone, Driver Instructions, Shipper,
+Goods, Total Items`.
+
+- One row per order; names split at the first space ("Sarah Marie Johnson" → Sarah / Marie Johnson); email,
+  phone and driver instructions copied exactly; Shipper = Honeyplate, Goods = Meals; Route# blank.
+- Home deliveries keep the file's Full Address (4-digit ZIP fixed: 6405 → 06405).
+- Pickup orders use the **Pickup locations** list (link next to the button; stored in `pickup_locations.json`).
+  Matching: exact name or another spelling, capitals and spaces ignored, then again without a trailing "(Town)".
+  Each location is *each order a stop*, *one drop-off for all its orders* (Chapel Haven: one "Chapel Haven" stop,
+  items summed, no phone/email) or *not on the list* (Main). Unknown locations are listed with a blank address and flagged.
+- A check window shows the counts and anything flagged before saving `Honeyplate_Delivery_Report_<date>.csv`
+  next to the orders file. Wrong columns or counts block the save.
+- Round trip: upload it, assign routes, and drop the returned file (same columns, Route# filled) on the **Driver
+  list** box; Route# is read as the driver and orders match by Order.
+
 ## Meal labels (one per container)
 
 Drop the *Fulfillment Label Data* CSV on the **Meal label CSV** box, pick the Custom and Regular templates,

@@ -17,6 +17,8 @@ from . import template as T
 from .designer import Designer
 from .drivers import DriverBook, customer_key
 from . import meal_window
+from .delivery_report import build_report, load_locations, write_report
+from .delivery_window import PickupLocationsDialog, ReportCheckDialog
 from .meal_labels import filter_records, looks_like_meal_file, read_records
 from .route_dialog import RouteDialog
 from .routes import RouteColumns, guess_route_columns, join_routes, looks_like_route_file
@@ -205,37 +207,45 @@ class App:
             c.bind("<<ComboboxSelected>>", lambda e: on_pick())
             return c
 
-        job(0, "Pack slips")
+        job(0, "Delivery report")
+        link(jobs, "Pickup locations", self.pickup_locations).grid(row=0, column=2, sticky="e", padx=10, pady=(8, 0))
+        self.report_btn = ttk.Button(jobs, text="Generate Delivery Report", command=self.generate_delivery_report,
+                                     width=22)
+        self.report_btn.grid(row=0, column=3, sticky="ew", pady=(8, 0))
+        ttk.Label(jobs, text="For the delivery software: upload it, add drivers, then drop it back in as the "
+                             "driver list.", style="Muted.TLabel").grid(row=1, column=1, columnspan=3, sticky="w")
+
+        job(2, "Pack slips")
         self.tpl_var = tk.StringVar()
         self.tpl_combo = combo(jobs, self.tpl_var, self._template_chosen)
-        self.tpl_combo.grid(row=0, column=1, sticky="w", pady=(8, 0))
-        link(jobs, "Remap Fields", self.remap).grid(row=0, column=2, sticky="e", padx=10, pady=(8, 0))
+        self.tpl_combo.grid(row=2, column=1, sticky="w", pady=(8, 0))
+        link(jobs, "Remap Fields", self.remap).grid(row=2, column=2, sticky="e", padx=10, pady=(8, 0))
         self.gen_btn = ttk.Button(jobs, text="Generate Pack Slips", command=self.generate, width=22)
-        self.gen_btn.grid(row=0, column=3, sticky="ew", pady=(8, 0))
+        self.gen_btn.grid(row=2, column=3, sticky="ew", pady=(8, 0))
         self.map_status = ttk.Label(jobs, text="", style="Muted.TLabel")
-        self.map_status.grid(row=1, column=1, columnspan=3, sticky="w")
+        self.map_status.grid(row=3, column=1, columnspan=3, sticky="w")
 
-        job(2, "Bag labels")
+        job(4, "Bag labels")
         self.label_var = tk.StringVar()
         self.label_combo = combo(jobs, self.label_var, self._label_chosen)
-        self.label_combo.grid(row=2, column=1, sticky="w", pady=(8, 0))
+        self.label_combo.grid(row=4, column=1, sticky="w", pady=(8, 0))
         self.label_btn = ttk.Button(jobs, text="Generate Bag Labels", command=self.generate_labels, width=22)
-        self.label_btn.grid(row=2, column=3, sticky="ew", pady=(8, 0))
+        self.label_btn.grid(row=4, column=3, sticky="ew", pady=(8, 0))
 
-        job(3, "Meal labels")
+        job(5, "Meal labels")
         meal_tpls = ttk.Frame(jobs)  # custom and regular meals each have their own template
-        meal_tpls.grid(row=3, column=1, sticky="w", pady=(8, 0))
+        meal_tpls.grid(row=5, column=1, sticky="w", pady=(8, 0))
         self.meal_custom_var, self.meal_regular_var = tk.StringVar(), tk.StringVar()
         self.meal_custom_combo = combo(meal_tpls, self.meal_custom_var, self._meal_layout_chosen, width=18)
         self.meal_regular_combo = combo(meal_tpls, self.meal_regular_var, self._meal_layout_chosen, width=18)
         for r, (text, c) in enumerate((("Custom", self.meal_custom_combo), ("Regular", self.meal_regular_combo))):
             ttk.Label(meal_tpls, text=text, style="Muted.TLabel").grid(row=r, column=0, sticky="w", padx=(0, 6))
             c.grid(row=r, column=1, sticky="w", pady=(0 if r == 0 else 3, 0))
-        link(jobs, "Sort & filter", self.meal_sort_filter).grid(row=3, column=2, sticky="e", padx=10, pady=(8, 0))
+        link(jobs, "Sort & filter", self.meal_sort_filter).grid(row=5, column=2, sticky="e", padx=10, pady=(8, 0))
         self.meal_btn = ttk.Button(jobs, text="Generate Meal Labels", command=self.generate_meal_labels, width=22)
-        self.meal_btn.grid(row=3, column=3, sticky="ew", pady=(8, 0))
+        self.meal_btn.grid(row=5, column=3, sticky="ew", pady=(8, 0))
         self.meal_summary = ttk.Label(jobs, text="", style="Muted.TLabel")
-        self.meal_summary.grid(row=4, column=1, columnspan=3, sticky="w", pady=(2, 0))
+        self.meal_summary.grid(row=6, column=1, columnspan=3, sticky="w", pady=(2, 0))
 
         self.progress = ttk.Progressbar(outer, mode="determinate")
         self.status = ttk.Label(outer, text="", style="Muted.TLabel")
@@ -625,7 +635,8 @@ class App:
     def _refresh_generate_state(self):
         """Each Generate button works only once the file it needs is loaded."""
         orders, meals = self.sheet is not None, self.meal_sheet is not None
-        for btn, ready in ((self.gen_btn, orders), (self.label_btn, orders), (self.meal_btn, meals)):
+        for btn, ready in ((self.report_btn, orders), (self.gen_btn, orders), (self.label_btn, orders),
+                           (self.meal_btn, meals)):
             btn.state(["!disabled"] if ready else ["disabled"])
         if not orders and not meals:
             self.status.configure(text=self.status.cget("text") or "Load this week's files to get started.")
@@ -640,6 +651,55 @@ class App:
         fallback = Path.home() / "Documents" / "Pack Slips"
         fallback.mkdir(parents=True, exist_ok=True)
         return default_output_path(fallback / src.name, self.date_picker.value, prefix)
+
+    # ------------------------------------------------------ delivery report
+    def pickup_locations(self):
+        dlg = PickupLocationsDialog(self.root)
+        if dlg.winfo_exists():
+            self.root.wait_window(dlg)
+
+    def generate_delivery_report(self):
+        if self.sheet is None:
+            messagebox.showinfo("No orders file yet", "Load this week's orders file first.", parent=self.root)
+            return
+        try:  # re-read so last-minute edits are included
+            self.sheet = load_sheet(self.sheet.path, self.sheet.sheet_name)
+        except SpreadsheetError as e:
+            messagebox.showerror("Can't read that spreadsheet", str(e), parent=self.root)
+            return
+        report = build_report(self.sheet, load_locations())
+        if report.errors:
+            messagebox.showerror("Can't make the delivery report", "\n\n".join(report.errors), parent=self.root)
+            return
+        out = self._report_path()
+        dlg = ReportCheckDialog(self.root, report, out.name)
+        if dlg.winfo_exists():
+            self.root.wait_window(dlg)
+        if not dlg.save:
+            return
+        try:
+            write_report(out, report.rows)
+        except OSError as e:
+            messagebox.showerror("Couldn't save the delivery report", f"The file couldn't be saved: {e.strerror or e}.",
+                                 parent=self.root)
+            return
+        diagnostics.note(f"delivery report: {len(report.rows)} rows")
+        self.status.configure(text=f"✓  Last run: delivery report with {len(report.rows)} stops saved to {out.name}",
+                              style="Ok.TLabel")
+        self._show_success(out, len(report.rows), title="Delivery report ready",
+                           detail=f"{len(report.rows)} stops. Upload it to the delivery software, add the drivers, "
+                                  "then drop the file back on the Driver list box.")
+
+    def _report_path(self) -> Path:
+        """Honeyplate_Delivery_Report_<date>.csv next to the orders file (never overwrites)."""
+        folder = self.sheet.path.parent if os.access(self.sheet.path.parent, os.W_OK) else \
+            Path.home() / "Documents" / "Pack Slips"
+        folder.mkdir(parents=True, exist_ok=True)
+        stem = f"Honeyplate_Delivery_Report_{self.date_picker.value:%Y-%m-%d}"
+        out, n = folder / f"{stem}.csv", 2
+        while out.exists():
+            out, n = folder / f"{stem} ({n}).csv", n + 1
+        return out
 
     # --------------------------------------------------------- meal labels
     def _use_meal_sheet(self, sheet: Sheet):
