@@ -323,3 +323,13 @@ menu item** with the quantity in the cell, then a `TOTALS` row:
 | Real spreadsheet headers | ✅ Received. Default fields and layout are built around them |
 | Logo + brand colors | ✅ Logo: black "MEAL + PREP" wordmark (`packslip/assets/meal_prep_logo.png`, redraw with `tools/make_logo.py`), installed as the default on first run. Brand colors: black `#000000` / dark gray `#555555` to match (Templates → Brand, no rebuild) |
 | Field list for the slip | ✅ Name, address, phone, order date, items with tick boxes, total items, delivery instructions. Total Cost and Paid are matched but deliberately left off the slip |
+
+## Save to Google Drive
+
+The success screen for pack slips, bag labels and meal labels has a **Save to Google Drive** button
+(`packslip/drive.py`). It needs **Google Drive for desktop**, which shows Drive as a normal folder
+(`~/Library/CloudStorage/GoogleDrive-…/My Drive`); the button copies the PDF there and Drive uploads it.
+- The first click asks for the folder; each kind (pack slips / bag labels / meal labels) remembers its own
+  (`settings.json` → `drive_folders`), so they can share a folder or not. **Change Drive folder…** picks again.
+- It never replaces a file: a second copy is saved as `name (2).pdf`, then `(3)`…
+- No sign-in; works offline (Drive syncs later). The local PDF stays where it was saved.

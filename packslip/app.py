@@ -17,6 +17,7 @@ from . import template as T
 from .designer import Designer
 from .drivers import DriverBook, customer_key
 from . import meal_window
+from .drive import drive_roots, save_copy
 from .delivery_report import build_report, fold_into_drops, load_locations, write_report
 from .delivery_window import PickupLocationsDialog, ReportCheckDialog
 from .meal_labels import filter_records, looks_like_meal_file, read_records
@@ -895,10 +896,53 @@ class App:
             main = ttk.Button(btns, text="Open PDF to Print", command=open_it, default="active")
             main.pack(side="right")
             win.bind("<Return>", lambda e: open_it())
+            self._drive_row(win, f, btns, out, title.replace(" ready", "").lower())
         win.bind("<Escape>", lambda e: win.destroy())
         center_on(win, self.root)
         make_modal(win)
         main.focus_set()
+
+    def _drive_row(self, win, f, btns, out: Path, kind: str):
+        """"Save to Google Drive": copies the PDF into the Drive folder chosen for this kind of file
+        (pack slips, bag labels, meal labels each remember their own; they can be the same folder)."""
+        status = ttk.Label(f, text="", wraplength=520, justify="left")
+        change = ttk.Label(f, text="Change Drive folder…", style="Link.TLabel", cursor="hand2")
+
+        def pick() -> Path | None:
+            saved = (self.settings.get("drive_folders") or {}).get(kind)
+            roots = drive_roots()
+            start = saved if saved and Path(saved).is_dir() else str(roots[0] if roots else Path.home())
+            chosen = filedialog.askdirectory(parent=win, title=f"Google Drive folder for {kind}", initialdir=start,
+                                             mustexist=True)
+            if not chosen:
+                return None
+            self.settings.setdefault("drive_folders", {})[kind] = chosen
+            storage.save_settings(self.settings)
+            return Path(chosen)
+
+        def save():
+            saved = (self.settings.get("drive_folders") or {}).get(kind)
+            folder = Path(saved) if saved and Path(saved).is_dir() else pick()
+            if folder is None:
+                return
+            try:
+                dest = save_copy(out, folder)
+            except OSError as e:
+                status.configure(text=f"Couldn't save to Google Drive: {e}", foreground="#B00020")
+            else:
+                status.configure(text=f"✓ Saved to Google Drive: {folder.name} / {dest.name}", foreground="#1E7B34")
+            status.pack(anchor="w", pady=(12, 0), before=change)
+
+        def change_folder():
+            folder = pick()
+            if folder:
+                status.configure(text=f"{kind.capitalize()} now go to Google Drive: {folder.name}. "
+                                      "Click Save to Google Drive to copy this one there.", foreground="#333333")
+                status.pack(anchor="w", pady=(12, 0), before=change)
+
+        change.bind("<Button-1>", lambda e: change_folder())
+        ttk.Button(btns, text="Save to Google Drive", command=save).pack(side="left")
+        change.pack(anchor="w", pady=(8, 0))
 
     # ------------------------------------------------------------- updates
     def _in_background(self, work, done):
