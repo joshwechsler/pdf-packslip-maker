@@ -29,7 +29,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import APP_NAME
+from . import APP_NAME, version_for
 
 REPO = "joshwechsler/pdf-packslip-maker"
 ASSET_NAME = "Packs-Be-Slippin-mac.zip"
@@ -39,10 +39,7 @@ LATEST_URL = f"https://api.github.com/repos/{REPO}/releases/latest"  # used by b
 MANIFEST_NAME = "latest.json"
 MANIFEST_URL = f"https://github.com/{REPO}/releases/latest/download/{MANIFEST_NAME}"
 
-try:
-    from ._build import BUILD  # written by CI; absent when running from source
-except ImportError:  # pragma: no cover
-    BUILD = 0
+from . import BUILD  # written by CI to _build.py; 0 when running from source
 
 
 class UpdateError(Exception):
@@ -266,4 +263,4 @@ def prepare_update(info: UpdateInfo) -> tuple[Path, Path, Path]:
 
 
 def describe_current() -> str:
-    return f"build {current_build()}" if current_build() else "development copy"
+    return f"version {version_for(current_build())}" if current_build() else "development copy"

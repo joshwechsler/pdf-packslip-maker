@@ -104,3 +104,10 @@ def test_parse_manifest():
     assert info.url.endswith("/releases/download/build-19/" + updater.ASSET_NAME)
     assert updater.parse_manifest(m, current_build=19) is None
     assert updater.parse_manifest({"oops": 1}, current_build=1) is None
+
+
+def test_version_follows_the_build(monkeypatch):
+    from packslip import MAJOR, version_for
+    assert MAJOR == 1 and version_for(39) == "1.39" and version_for(40) == "1.40"
+    monkeypatch.setenv("PACKSLIP_PRETEND_BUILD", "39")
+    assert updater.describe_current() == "version 1.39"
