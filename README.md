@@ -226,6 +226,11 @@ Matching (`routes.join_routes`):
 - By normalised order number (`#05704919` = `5704919` = `5704919.0`).
 - Rows **without** an order number match by customer name, only if that name appears once.
 - A row with an order number is never reused for another order by the same customer.
+- A driver that is just a number (the delivery software's `Route#`) shows as **Route 1**.
+- Home deliveries folded into a drop-off (e.g. Chapel Haven) take that drop-off line's driver
+  (`routes.drop_off_drivers`), pre-set in a dropdown you can change.
+- Deliveries the file doesn't cover get a **driver dropdown each** on the same screen. Picks apply to
+  this week only (cleared with the orders file).
 
 Then:
 - Each pack slip shows **Driver: Mike** (`driver_stop` field), or **Driver: Mike · Stop 5** when the

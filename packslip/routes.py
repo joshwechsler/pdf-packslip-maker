@@ -97,6 +97,34 @@ class RouteResult:
     by_name: int = 0                                           # how many matched by name (not number)
 
 
+def driver_label(value: str) -> str:
+    """How a driver prints on the slips: a bare route number reads 'Route 1'; names stay as they are."""
+    v = " ".join((value or "").split())
+    return f"Route {v}" if v.isdigit() else v
+
+
+def drop_off_drivers(route_sheet: Sheet, cols: RouteColumns, all_values: list[dict], locations,
+                     skip: set[int] | None = None) -> dict[int, str]:
+    """Home deliveries folded into a drop-off stop (e.g. the one "Chapel Haven" line) take that stop's
+    driver: a driver-list row with no order number, named after a one-drop-off location, gives its driver
+    to every home delivery (not pickup) addressed to that location. `skip`: orders already matched."""
+    from .delivery_report import is_pickup, same_place  # local import: delivery_report is optional here
+    stops = {norm_name(loc.drop_name or loc.name): loc for loc in locations if loc.mode == "one_drop"}
+    out: dict[int, str] = {}
+    for row in route_sheet.rows:
+        driver = (row.get(cols.driver) or "").strip()
+        has_order = bool(cols.order and norm_order(row.get(cols.order, "")))
+        loc = stops.get(norm_name(row.get(cols.customer, ""))) if cols.customer else None
+        if not driver or has_order or loc is None:
+            continue
+        for i, v in enumerate(all_values):
+            if i in (skip or set()) or i in out or is_pickup(v.get("fulfillment", "")):
+                continue
+            if same_place(v.get("address", ""), loc):
+                out[i] = driver_label(driver)
+    return out
+
+
 def join_routes(route_sheet: Sheet, cols: RouteColumns, all_values: list[dict]) -> RouteResult:
     by_order: dict[str, dict] = {}
     by_name: dict[str, list[dict]] = {}
@@ -121,7 +149,7 @@ def join_routes(route_sheet: Sheet, cols: RouteColumns, all_values: list[dict]) 
         if row is None:
             res.unmatched.append(i)
             continue
-        res.assignment[i] = " ".join(row[cols.driver].split())
+        res.assignment[i] = driver_label(row[cols.driver])
         if cols.stop:
             n = _stop_number(row.get(cols.stop, ""))
             if n is not None:

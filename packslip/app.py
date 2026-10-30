@@ -21,7 +21,7 @@ from .delivery_report import build_report, fold_into_drops, load_locations, writ
 from .delivery_window import PickupLocationsDialog, ReportCheckDialog
 from .meal_labels import filter_records, looks_like_meal_file, read_records
 from .route_dialog import RouteDialog
-from .routes import RouteColumns, guess_route_columns, join_routes, looks_like_route_file
+from .routes import RouteColumns, drop_off_drivers, guess_route_columns, join_routes, looks_like_route_file
 from .mapping import Mapping, load_mapping, migrate_legacy_mapping, save_mapping
 from .mapping_dialog import MappingDialog
 from .datepicker import DatePicker, default_delivery_date, sheet_delivery_date
@@ -326,6 +326,7 @@ class App:
                 return
         self.sheet = sheet
         self.route_sheet = None  # a new orders file needs its driver list loaded again
+        self.route_manual = {}
         self.settings["last_dir"] = str(path.parent)
         storage.save_settings(self.settings)
         self._refresh_file_status()
@@ -506,7 +507,7 @@ class App:
         cols = RouteColumns.from_json(book.route_columns)
         if not cols.fits(sheet.headers):
             cols = guess_route_columns(sheet.headers)
-        dlg = RouteDialog(self.root, sheet, cols, values)
+        dlg = RouteDialog(self.root, sheet, cols, values, load_locations())
         if dlg.winfo_exists():
             self.root.wait_window(dlg)
         if dlg.result is None:
@@ -514,14 +515,26 @@ class App:
         book.route_columns = dlg.result.to_json()
         book.save()
         self.route_sheet, self.route_cols, self.route_name = sheet, dlg.result, path.name
+        # Drivers picked by hand, kept by customer so re-reading the orders file keeps them ("" = none).
+        self.route_manual = {customer_key(values[i]): d for i, d in getattr(dlg, "manual", {}).items()}
         self._apply_routes()
         self._refresh_driver_status()
 
     def _apply_routes(self):
+        """Drivers from the driver list; then drop-off stops' drivers for deliveries folded into them;
+        then the ones picked by hand."""
         values = self._all_values()
         res = join_routes(self.route_sheet, self.route_cols, values)
         for i, d in res.assignment.items():
             self.driver_by_key[customer_key(values[i])] = d
+        for i, d in drop_off_drivers(self.route_sheet, self.route_cols, values, load_locations(),
+                                     skip=set(res.assignment)).items():
+            self.driver_by_key[customer_key(values[i])] = d
+        for key, d in getattr(self, "route_manual", {}).items():
+            if d:
+                self.driver_by_key[key] = d
+            else:
+                self.driver_by_key.pop(key, None)
         self.stop_by_key = {customer_key(values[i]): n for i, n in res.stops.items()}
 
     def _refresh_driver_status(self):
@@ -688,8 +701,8 @@ class App:
         self.status.configure(text=f"✓  Last run: delivery report with {len(report.rows)} stops saved to {out.name}",
                               style="Ok.TLabel")
         self._show_success(out, len(report.rows), title="Delivery report ready",
-                           detail=f"{len(report.rows)} stops. Upload it to the delivery software, add the drivers, "
-                                  "then drop the file back on the Driver list box.")
+                           detail=f"{len(report.rows)} stops, as a .csv file. Upload it to the delivery software as it "
+                                  "is, add the drivers, then drop the file you get back on the Driver list box.")
 
     def _report_path(self) -> Path:
         """Honeyplate_Delivery_Report_<date>.csv next to the orders file (never overwrites)."""
@@ -849,16 +862,20 @@ class App:
         self._show_success(out, pages)
 
     def _show_success(self, out: Path, pages: int, title: str = "Pack slips ready", detail: str = ""):
+        """PDFs: the main button opens it to print. CSV files (the delivery report): it shows the file in
+        Finder, ready to upload (opening it in Numbers and saving again would change the file type)."""
+        is_csv = out.suffix.lower() == ".csv"
         win = tk.Toplevel(self.root)
         win.title(title)
         win.transient(self.root)
         win.resizable(False, False)
         f = ttk.Frame(win, padding=22)
         f.pack(fill="both", expand=True)
-        ttk.Label(f, text=f"✓  Your {title.replace(' ready', '').lower()} are ready", font=("Helvetica", 17, "bold"),
-                  foreground="#1E7B34").pack(anchor="w")
+        heading = (f"✓  Your {title.replace(' ready', '').lower()} CSV is saved" if is_csv
+                   else f"✓  Your {title.replace(' ready', '').lower()} are ready")
+        ttk.Label(f, text=heading, font=("Helvetica", 17, "bold"), foreground="#1E7B34").pack(anchor="w")
         ttk.Label(f, text=detail or f"{pages} page{'s' if pages != 1 else ''} — one per customer.",
-                  justify="left").pack(anchor="w", pady=(6, 10))
+                  justify="left", wraplength=520).pack(anchor="w", pady=(6, 10))
         ttk.Label(f, text="Saved as:", style="Muted.TLabel").pack(anchor="w")
         win.path_var = tk.StringVar(master=win, value=str(out))  # keep a reference or Tk shows it blank
         entry = ttk.Entry(f, textvariable=win.path_var, width=60, state="readonly")
@@ -866,16 +883,22 @@ class App:
         btns = ttk.Frame(f)
         btns.pack(fill="x")
         ttk.Button(btns, text="Done", command=win.destroy).pack(side="right")
-        ttk.Button(btns, text="Show in Finder" if IS_MAC else "Show Folder",
-                   command=lambda: (reveal_path(out), win.destroy())).pack(side="right", padx=8)
-        open_btn = ttk.Button(btns, text="Open PDF to Print", command=lambda: (open_path(out), win.destroy()),
-                              default="active")
-        open_btn.pack(side="right")
-        win.bind("<Return>", lambda e: (open_path(out), win.destroy()))
+        reveal = (lambda: (reveal_path(out), win.destroy()))
+        open_it = (lambda: (open_path(out), win.destroy()))
+        finder = "Show in Finder" if IS_MAC else "Show Folder"
+        if is_csv:
+            main = ttk.Button(btns, text=finder, command=reveal, default="active")
+            main.pack(side="right", padx=8)
+            win.bind("<Return>", lambda e: reveal())
+        else:
+            ttk.Button(btns, text=finder, command=reveal).pack(side="right", padx=8)
+            main = ttk.Button(btns, text="Open PDF to Print", command=open_it, default="active")
+            main.pack(side="right")
+            win.bind("<Return>", lambda e: open_it())
         win.bind("<Escape>", lambda e: win.destroy())
         center_on(win, self.root)
         make_modal(win)
-        open_btn.focus_set()
+        main.focus_set()
 
     # ------------------------------------------------------------- updates
     def _in_background(self, work, done):

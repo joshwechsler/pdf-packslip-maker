@@ -68,3 +68,32 @@ def test_driver_column_is_never_an_instructions_or_contact_column():
     # A saved choice of such a column is not reused.
     saved = RouteColumns(order="Order", customer="Customer", driver="Driver Instructions")
     assert not saved.fits(["Order", "Customer", "Driver Instructions"])
+
+
+def test_route_numbers_read_as_route_names(tmp_path):
+    from packslip.routes import driver_label
+    assert [driver_label(v) for v in ("1", " 12 ", "Mike", "Route 3", "")] == ["Route 1", "Route 12", "Mike", "Route 3", ""]
+    s = _route_file(tmp_path, "Route#,Order,Customer\n2,5704919,Ann Lee\n")
+    res = join_routes(s, guess_route_columns(s.headers), _vals())
+    assert res.assignment[0] == "Route 2"
+
+
+def test_folded_drop_off_deliveries_take_the_drop_off_driver(tmp_path):
+    from packslip.delivery_report import DEFAULT_LOCATIONS
+    from packslip.routes import drop_off_drivers
+    values = [
+        {"order_number": "1", "customer_name": "Ann Lee", "fulfillment": "Scheduled Delivery",
+         "address": "1040 Whalley Ave, New Haven, CT 06515"},                      # folded into Chapel Haven
+        {"order_number": "2", "customer_name": "Bo Ray", "fulfillment": "Scheduled Delivery",
+         "address": "(Chapel Haven-RESIDENTS ONLY) 1040 Whalley Ave, New Haven, CT 06515"},
+        {"order_number": "3", "customer_name": "Cy Fox", "fulfillment": "In Store Pickup",
+         "address": "", "pickup_location": "Chapel Haven- RESIDENTS ONLY"},      # pickup: no driver
+        {"order_number": "4", "customer_name": "Dee Kim", "fulfillment": "Scheduled Delivery",
+         "address": "9 Oak St, Hamden, CT 06514"},                                 # elsewhere
+    ]
+    s = _route_file(tmp_path, "Route#,Order,Customer,Full Address\n"
+                              '3,,Chapel Haven,"(Chapel Haven- RESIDENTS ONLY) 1040 Whalley Ave, New Haven, CT 06516"\n'
+                              "1,4,Dee Kim,\n")
+    cols = guess_route_columns(s.headers)
+    assert drop_off_drivers(s, cols, values, DEFAULT_LOCATIONS) == {0: "Route 3", 1: "Route 3"}
+    assert drop_off_drivers(s, cols, values, DEFAULT_LOCATIONS, skip={0}) == {1: "Route 3"}
