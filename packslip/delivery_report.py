@@ -15,6 +15,7 @@ Deterministic, following the Operator's written spec (no guessing):
 from __future__ import annotations
 
 import csv
+import datetime as dt
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -212,7 +213,8 @@ def build_report(sheet: Sheet, locations: list[PickupLocation]) -> Report:
             if drop is None:
                 stop = loc.drop_name or loc.name
                 drop = base(row, stop, loc.full_address(), loc.city(), location)
-                drop.update({"Order": "", "Customer First Name": stop, "Customer Last Name": "",
+                drop.update({"Order": drop_order_number(stop, row.get("Fulfillment Date", "")),
+                             "Customer First Name": stop, "Customer Last Name": "",
                              "Customer Email": "", "Customer Phone": "", "Driver Instructions": "",
                              "Total Items": "0"})
                 drops[loc.name] = drop
@@ -236,6 +238,23 @@ def build_report(sheet: Sheet, locations: list[PickupLocation]) -> Report:
     if any(list(r) != COLUMNS for r in rep.rows):
         rep.errors.append("Column check failed. Please report this.")
     return rep
+
+
+def drop_order_number(stop: str, date: str) -> str:
+    """The made-up order number for a drop-off line (the delivery software needs one to track it):
+    the stop's initials + its delivery date, e.g. "Chapel Haven", 11/01/2026 -> "CH110126"."""
+    initials = "".join(w[0] for w in re.findall(r"[A-Za-z0-9]+", stop)).upper() or "DROP"
+    text = (date or "").strip().split(" ")[0]
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%m/%d/%y", "%m-%d-%Y"):
+        try:
+            return initials + dt.datetime.strptime(text, fmt).strftime("%m%d%y")
+        except ValueError:
+            continue
+    return initials + "1"
+
+
+def is_drop_row(row: dict, stop: str) -> bool:
+    return row["Customer"] == stop and (not row["Order"] or row["Order"] == drop_order_number(stop, row["Fulfillment Date"]))
 
 
 def same_place(address: str, loc: PickupLocation) -> bool:
@@ -262,9 +281,9 @@ def fold_into_drops(rep: Report, orders: list[str]) -> None:
             if i is None:
                 continue
             row = rep.rows.pop(i)
-            drop = next((r for r in rep.rows if not r["Order"] and r["Customer"] == stop), None)
+            drop = next((r for r in rep.rows if is_drop_row(r, stop)), None)
             if drop is None:  # no pickups there this week: the drop-off starts with this order
-                drop = dict(row, **{"Order": "", "Customer": stop, "Customer First Name": stop,
+                drop = dict(row, **{"Order": drop_order_number(stop, row["Fulfillment Date"]), "Customer": stop, "Customer First Name": stop,
                                     "Customer Last Name": "", "Location": loc.name, "City": loc.city(),
                                     "Full Address": loc.full_address(), "Customer Email": "", "Customer Phone": "",
                                     "Driver Instructions": "", "Total Items": "0"})

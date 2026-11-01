@@ -29,6 +29,10 @@ ROWS = [
 ]
 
 
+def _key(r):
+    return r["Customer"] if r["Customer"] == "Chapel Haven" else r["Order"]
+
+
 def _report(tmp_path):
     p = tmp_path / "orders.csv"
     p.write_text(HEAD + "".join(ROWS))
@@ -51,7 +55,7 @@ def test_helpers():
 def test_report_rows(tmp_path):
     rep = _report(tmp_path)
     assert not rep.errors
-    rows = {r["Order"] or r["Customer"]: r for r in rep.rows}
+    rows = {r["Customer"] if r["Customer"] == "Chapel Haven" else r["Order"]: r for r in rep.rows}
     assert list(rows) == ["1001", "Chapel Haven", "1005", "1006", "1007"]          # file order; 1002 left off
     home = rows["1001"]
     assert (home["Customer"], home["Customer First Name"], home["Customer Last Name"]) == (
@@ -63,7 +67,7 @@ def test_report_rows(tmp_path):
     chapel = rows["Chapel Haven"]                                                    # one drop, 4 + 6 items
     assert chapel["Total Items"] == "10" and chapel["Customer Email"] == "" and chapel["Customer Phone"] == ""
     assert chapel["Full Address"] == "(Chapel Haven- RESIDENTS ONLY) 1040 Whalley Ave, New Haven, CT 06516"
-    assert chapel["City"] == "New Haven" and chapel["Order"] == ""
+    assert chapel["City"] == "New Haven" and chapel["Order"] == "CH110126"
     milford = rows["1005"]
     assert milford["Full Address"] == "(Crossfit Milford) 333 Quarry Rd, Milford, CT 06460"
     assert milford["City"] == "Milford" and milford["Customer Email"] == "d@x.com"
@@ -125,20 +129,20 @@ def _fold_report(tmp_path, rows=FOLD_ROWS):
 def test_home_deliveries_to_a_drop_off_address_are_found(tmp_path):
     rep = _fold_report(tmp_path)
     assert rep.fold_candidates == {"Chapel Haven- RESIDENTS ONLY": ["2002", "2003"]}
-    assert [r["Order"] or r["Customer"] for r in rep.rows] == ["Chapel Haven", "2002", "2003", "2004", "2005"]
+    assert [_key(r) for r in rep.rows] == ["Chapel Haven", "2002", "2003", "2004", "2005"]
 
 
 def test_folding_into_the_drop_off(tmp_path):
     from packslip.delivery_report import fold_into_drops
     rep = _fold_report(tmp_path)
     fold_into_drops(rep, ["2002", "2003"])
-    assert [r["Order"] or r["Customer"] for r in rep.rows] == ["Chapel Haven", "2004", "2005"]
+    assert [_key(r) for r in rep.rows] == ["Chapel Haven", "2004", "2005"]
     chapel = rep.rows[0]
     assert chapel["Total Items"] == str(4 + 5 + 6)
     assert (rep.audit["rows"], rep.audit["home"], rep.audit["combined"]) == (3, 2, 3)
     rep2 = _fold_report(tmp_path)
     fold_into_drops(rep2, ["2002"])                                   # one unticked: stays its own stop
-    assert [r["Order"] or r["Customer"] for r in rep2.rows] == ["Chapel Haven", "2003", "2004", "2005"]
+    assert [_key(r) for r in rep2.rows] == ["Chapel Haven", "2003", "2004", "2005"]
 
 
 def test_folding_creates_the_drop_off_when_no_pickups_there(tmp_path):
@@ -148,3 +152,21 @@ def test_folding_creates_the_drop_off_when_no_pickups_there(tmp_path):
     fold_into_drops(rep, ["2002", "2003"])
     assert len(rep.rows) == 1 and rep.rows[0]["Customer"] == "Chapel Haven" and rep.rows[0]["Total Items"] == "11"
     assert rep.rows[0]["Full Address"].startswith("(Chapel Haven- RESIDENTS ONLY) 1040 Whalley Ave")
+
+
+def test_drop_off_line_gets_a_made_up_order_number(tmp_path):
+    from packslip.delivery_report import drop_order_number
+    rep = _report(tmp_path)
+    chapel = next(r for r in rep.rows if r["Customer"] == "Chapel Haven")
+    assert chapel["Order"] == "CH110126"                       # stop initials + delivery date (MMDDYY)
+    assert drop_order_number("Chapel Haven", "2026-11-08") == "CH110826"
+    assert drop_order_number("Chapel Haven", "") == "CH1"      # no date: still never blank
+    assert drop_order_number("Westport Y", "11/1/2026") == "WY110126"
+
+
+def test_drop_off_created_by_folding_also_gets_the_number(tmp_path):
+    from packslip.delivery_report import fold_into_drops
+    rep = _fold_report(tmp_path, FOLD_ROWS[1:3])
+    fold_into_drops(rep, ["2002", "2003"])
+    assert rep.rows[0]["Customer"] == "Chapel Haven" and rep.rows[0]["Order"].startswith("CH")
+    assert rep.rows[0]["Order"] != "CH1"

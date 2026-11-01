@@ -268,7 +268,8 @@ Goods, Total Items`.
 - Pickup orders use the **Pickup locations** list (link next to the button; stored in `pickup_locations.json`).
   Matching: exact name or another spelling, capitals and spaces ignored, then again without a trailing "(Town)".
   Each location is *each order a stop*, *one drop-off for all its orders* (Chapel Haven: one "Chapel Haven" stop,
-  items summed, no phone/email) or *not on the list* (Main). Unknown locations are listed with a blank address and flagged.
+  items summed, no phone/email, and a made-up order number so the delivery software can track it: the stop's
+  initials + delivery date, e.g. `CH110126` for Nov 1, 2026) or *not on the list* (Main). Unknown locations are listed with a blank address and flagged.
 - Home deliveries addressed to a drop-off location (same street number and street name, and its town, e.g.
   "1040 Whalley Avenue, Apt 304, New Haven") are listed in the check window, ticked; ticked ones join that drop-off.
 - A check window shows the counts and anything flagged before saving `Honeyplate_Delivery_Report_<date>.csv`

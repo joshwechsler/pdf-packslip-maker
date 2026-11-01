@@ -97,3 +97,14 @@ def test_folded_drop_off_deliveries_take_the_drop_off_driver(tmp_path):
     cols = guess_route_columns(s.headers)
     assert drop_off_drivers(s, cols, values, DEFAULT_LOCATIONS) == {0: "Route 3", 1: "Route 3"}
     assert drop_off_drivers(s, cols, values, DEFAULT_LOCATIONS, skip={0}) == {1: "Route 3"}
+
+
+def test_drop_off_line_with_its_made_up_order_number_still_gives_its_driver(tmp_path):
+    from packslip.delivery_report import DEFAULT_LOCATIONS
+    from packslip.routes import drop_off_drivers
+    values = [{"order_number": "1", "customer_name": "Ann Lee", "fulfillment": "Scheduled Delivery",
+               "address": "1040 Whalley Ave, New Haven, CT 06515"}]
+    s = _route_file(tmp_path, "Route#,Order,Customer\n2,CH110126,Chapel Haven\n")
+    cols = guess_route_columns(s.headers)
+    assert drop_off_drivers(s, cols, values, DEFAULT_LOCATIONS) == {0: "Route 2"}
+    assert join_routes(s, cols, values).assignment == {}       # the CH number never matches a real order

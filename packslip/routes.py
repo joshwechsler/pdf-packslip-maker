@@ -113,9 +113,10 @@ def drop_off_drivers(route_sheet: Sheet, cols: RouteColumns, all_values: list[di
     out: dict[int, str] = {}
     for row in route_sheet.rows:
         driver = (row.get(cols.driver) or "").strip()
-        has_order = bool(cols.order and norm_order(row.get(cols.order, "")))
         loc = stops.get(norm_name(row.get(cols.customer, ""))) if cols.customer else None
-        if not driver or has_order or loc is None:
+        # The drop-off line has no order number, or the made-up one the delivery report gave it (CH110126).
+        order = norm_order(row.get(cols.order, "")) if cols.order else ""
+        if not driver or loc is None or (order and not re.fullmatch(r"[a-z]+\d*", order)):
             continue
         for i, v in enumerate(all_values):
             if i in (skip or set()) or i in out or is_pickup(v.get("fulfillment", "")):
