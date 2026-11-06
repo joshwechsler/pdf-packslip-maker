@@ -19,7 +19,10 @@ env:
 
 jobs:
   build:
-    runs-on: macos-15
+    # GitHub's Apple Silicon (arm64) macOS runners are short of capacity (jobs cancelled or never picked up),
+    # so build on an Intel one. The app is still universal2: the lipo check below verifies both slices, and
+    # the self-test runs the slice this runner can execute. Switch back to macos-15 when capacity returns.
+    runs-on: macos-15-intel
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -84,16 +87,19 @@ jobs:
           codesign --force --deep --sign - "dist/Packs Be Slippin'.app"
           codesign --verify --deep --strict --verbose=2 "dist/Packs Be Slippin'.app"
 
-      - name: Self-test (Apple Silicon)
+      - name: Self-test (native slice of this runner)
         run: |
+          echo "Runner: $(uname -m)"
           "dist/Packs Be Slippin'.app/Contents/MacOS/Packs Be Slippin'" --selftest
 
-      - name: Self-test (Intel, via Rosetta)
+      - name: Self-test (Intel slice)
         run: |
-          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+          if [[ "$(uname -m)" == arm64 ]] && arch -x86_64 /usr/bin/true 2>/dev/null; then
             arch -x86_64 "dist/Packs Be Slippin'.app/Contents/MacOS/Packs Be Slippin'" --selftest
           else
             echo "::warning::Rosetta isn't installed on this runner; Intel slice not executed."
+          elif [[ "$(uname -m)" == x86_64 ]]; then
+            echo "Intel runner: the Intel slice ran in the step above. The Apple Silicon slice is checked by lipo only."
           fi
 
       - name: GUI smoke test
