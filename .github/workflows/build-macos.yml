@@ -94,12 +94,12 @@ jobs:
 
       - name: Self-test (Intel slice)
         run: |
-          if [[ "$(uname -m)" == arm64 ]] && arch -x86_64 /usr/bin/true 2>/dev/null; then
+          if [[ "$(uname -m)" == x86_64 ]]; then
+            echo "Intel runner: the Intel slice ran in the step above. The Apple Silicon slice is checked by lipo only."
+          elif arch -x86_64 /usr/bin/true 2>/dev/null; then
             arch -x86_64 "dist/Packs Be Slippin'.app/Contents/MacOS/Packs Be Slippin'" --selftest
           else
             echo "::warning::Rosetta isn't installed on this runner; Intel slice not executed."
-          elif [[ "$(uname -m)" == x86_64 ]]; then
-            echo "Intel runner: the Intel slice ran in the step above. The Apple Silicon slice is checked by lipo only."
           fi
 
       - name: GUI smoke test
