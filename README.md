@@ -361,3 +361,11 @@ Oswald has no italic) and any fonts added with **Add Font…** (`packslip/fonts.
 - **Password**: optional; once set, Settings asks for it. Stored as a salted hash (`packslip/password.py`).
   It only guards Settings. Forgotten: quit the app, open `~/Library/Application Support/Packs Be Slippin'/settings.json`
   and delete the `"settings_password"` entry.
+
+## Long product names on meal labels
+
+The product box on both meal labels is two lines tall and centred vertically, so a long name
+("Pay It Forward Loaf by / Downright Breads") wraps onto a second line at full size and only
+shrinks if two lines aren't enough. Saved meal labels still exactly on the first layout are moved
+to this once (`meal_wrap` upgrade); rearranged ones are left alone. Any text box can do the same:
+make it taller and tick **Center vertically in the box** in the designer.

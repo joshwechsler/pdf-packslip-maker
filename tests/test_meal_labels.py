@@ -137,3 +137,47 @@ def test_meal_file_is_recognised(tmp_path):
     p = tmp_path / "orders.csv"
     p.write_text("Order,Customer,Product,Quantity,Full Address\n1,Ann,Oats,1,1 A St\n")
     assert not looks_like_meal_file(load(p))
+
+
+LONG = "Pay It Forward Loaf by Downright Breads"
+
+
+def _product(t):
+    return next(e for e in t.elements if e.get("field") == "product")
+
+
+def test_long_product_name_wraps_to_two_lines_at_full_size():
+    from packslip import template as T
+    from packslip.layout import fit_text, inner_box
+    for t in (T.custom_meal_template(), T.regular_meal_template()):
+        el = _product(t)
+        ix, iy, iw, ih = inner_box(el)
+        lay = fit_text(LONG, el["font"], el["bold"], el["italic"], el["size"], iw, ih)
+        assert len(lay.lines) == 2 and lay.size == el["size"] == 16, t.name
+        assert el["valign"] == "middle"
+        assert max(e["y"] + e["h"] for e in t.elements) <= 352       # still inside the 3 x 5 label
+
+
+def test_short_name_is_centred_in_the_two_line_box():
+    from packslip import template as T
+    from packslip.layout import fit_text, inner_box, text_top
+    el = _product(T.regular_meal_template())
+    ix, iy, iw, ih = inner_box(el)
+    one = fit_text("Oats", el["font"], el["bold"], el["italic"], el["size"], iw, ih)
+    two = fit_text(LONG, el["font"], el["bold"], el["italic"], el["size"], iw, ih)
+    assert text_top(el, one, ih) > 5 and abs(text_top(el, two, ih)) < 2
+    assert text_top(dict(el, valign="top"), one, ih) == 0
+
+
+def test_saved_meal_labels_on_the_old_layout_are_upgraded_once_and_edited_ones_left_alone():
+    from packslip import template as T
+    for build in (T.custom_meal_template, T.regular_meal_template):
+        old = T.Template.from_json(dict(build(legacy=True).to_json(), upgrades=["pickup_access", "driver"]))
+        new = build()
+        assert [(e["x"], e["y"], e["w"], e["h"]) for e in old.elements] == \
+               [(e["x"], e["y"], e["w"], e["h"]) for e in new.elements]
+        assert _product(old)["valign"] == "middle" and "meal_wrap" in old.upgrades
+        moved = build(legacy=True)
+        _product(moved)["y"] = 141.0                                  # the Operator moved it
+        kept = T.Template.from_json(dict(moved.to_json(), upgrades=["pickup_access", "driver"]))
+        assert _product(kept)["y"] == 141.0 and _product(kept)["h"] == 22.0

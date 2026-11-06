@@ -51,9 +51,9 @@ _OLD_PLACEHOLDER_BRAND = {"primary": "#1F3A5F", "accent": "#C8A24A"}
 ELEMENT_DEFAULTS = {
     "field": {"field": "", "label": "", "font": "Helvetica", "size": 11, "bold": False, "italic": False,
               "align": "left", "color": "#222222", "fill": "", "border": "", "shrink": True,
-              "split_lines": False, "bullets": False},
+              "split_lines": False, "bullets": False, "valign": "top"},
     "text": {"text": "Text", "font": "Helvetica", "size": 11, "bold": False, "italic": False,
-             "align": "left", "color": "#222222", "fill": "", "border": "", "shrink": True},
+             "align": "left", "color": "#222222", "fill": "", "border": "", "shrink": True, "valign": "top"},
     "logo": {"image": ""},
     "box": {"fill": "brand:primary", "border": "", "border_width": 1.0, "radius": 0.0},
     "items": {"font": "Helvetica", "size": 13, "color": "#222222", "show_boxes": True,
@@ -90,6 +90,8 @@ def normalize_element(el: dict) -> dict:
             out["font"] = "Helvetica"   # any other name is kept: it may be a font added on another Mac
         if out.get("align") not in ("left", "center", "right"):
             out["align"] = "left"
+        if out.get("valign") not in ("top", "middle"):
+            out["valign"] = "top"
     return out
 
 
@@ -156,6 +158,8 @@ class Template:
             _upgrade_driver(t)
         elif t.kind == LABEL:
             _upgrade_pickup_bag_size(t)
+        elif t.kind == MEAL:
+            _upgrade_meal_wrap(t)
         return t
 
     def copy(self, name: str | None = None) -> "Template":
@@ -272,6 +276,25 @@ def _upgrade_pickup_bag_size(t: "Template") -> None:
         t.bag_size = 6
 
 
+def _upgrade_meal_wrap(t: "Template") -> None:
+    """Meal labels still exactly on the first layout get the two-line product box (and what's below it moves
+    down) once. A label the Operator rearranged is left as it is."""
+    if "meal_wrap" in t.upgrades:
+        return
+    t.upgrades.append("meal_wrap")
+    build = custom_meal_template if t.meal_for == "custom" else regular_meal_template
+    old, new = build(legacy=True).elements, build().elements
+
+    def shape(els):
+        return [(e["type"], e.get("field"), e["x"], e["y"], e["w"], e["h"]) for e in els]
+    if shape(t.elements) != shape(old):
+        return
+    for el, target in zip(t.elements, new):
+        el.update({k: target[k] for k in ("x", "y", "w", "h")})
+        if target.get("valign"):
+            el["valign"] = target["valign"]
+
+
 def default_template(name: str = "Standard") -> Template:
     """Starting layout, built around the weekly order sheet's columns."""
     E = make_element
@@ -363,48 +386,56 @@ def pickup_label_template(name: str = LABEL_NAME) -> Template:
 CUSTOM_MEAL_NAME, REGULAR_MEAL_NAME = "Custom Meal Label", "Regular Meal Label"
 
 
-def _meal_header(bold_name: bool) -> list[dict]:
-    """Date, customer and product with dividing lines, as on the Operator's 3 × 5 in labels."""
+def _meal_header(bold_name: bool, legacy: bool = False) -> list[dict]:
+    """Date, customer and product with dividing lines, as on the Operator's 3 × 5 in labels.
+    The product box is two lines tall, so a long name wraps before it shrinks
+    (legacy: the first version's one-line box, kept to recognise saved labels still on it)."""
     E = make_element
     serif = {"font": "Times", "color": "#000000"}
+    product = (E("field", 8, 139, 200, 22, field="product", size=16, bold=True, align="center", **serif) if legacy
+               else E("field", 8, 136, 200, 39, field="product", size=16, bold=True, align="center",
+                      valign="middle", **serif))
     return [
         E("field", 18, 78, 180, 20, field="delivery_date_short", label="Date:", size=15, **serif),
         E("box", 0, 100, 216, 1.2, fill="#000000"),
         E("field", 18, 106, 180, 22, field="customer_name", size=15, bold=bold_name, **serif),
         E("box", 0, 132, 216, 1.2, fill="#000000"),
-        E("field", 8, 139, 200, 22, field="product", size=16, bold=True, align="center", **serif),
-        E("box", 0, 164, 216, 1.2, fill="#000000"),
+        product,
+        E("box", 0, 164 if legacy else 178, 216, 1.2, fill="#000000"),
     ]
 
 
-def custom_meal_template(name: str = CUSTOM_MEAL_NAME) -> Template:
+def custom_meal_template(name: str = CUSTOM_MEAL_NAME, legacy: bool = False) -> Template:
     """3 × 5 in label for custom meals: four boxed ingredient rows, then Day / Meal (blank unless the
     meal has them). Ingredients are in the order listed; "Custom Protein/Carb/Veg/Sauce" are also available."""
     E = make_element
-    els = _meal_header(bold_name=True)
+    els = _meal_header(bold_name=True, legacy=legacy)
+    top, row = (186, 32) if legacy else (196, 30)
     for n in range(4):
-        y = 186 + n * 32
-        els.append(E("box", 20, y, 176, 32, fill="", border="#000000", border_width=1.2))
-        els.append(E("field", 26, y + 7, 166, 20, field=f"item_{n + 1}", size=14, font="Times", color="#000000"))
+        y = top + n * row
+        els.append(E("box", 20, y, 176, row, fill="", border="#000000", border_width=1.2))
+        els.append(E("field", 26, y + (row - 20) / 2 + 1, 166, 20, field=f"item_{n + 1}", size=14, font="Times",
+                     color="#000000"))
     els += [E("field", 20, 326, 84, 20, field="day", size=14, font="Times", color="#000000"),
             E("field", 112, 326, 84, 20, field="meal", size=14, font="Times", color="#000000")]
-    return Template(name=name, page="Label (3 × 5 in)", elements=els, upgrades=["pickup_access", "driver"],
-                    kind=MEAL, meal_for="custom")
+    return Template(name=name, page="Label (3 × 5 in)", elements=els,
+                    upgrades=["pickup_access", "driver"] + ([] if legacy else ["meal_wrap"]), kind=MEAL, meal_for="custom")
 
 
-def regular_meal_template(name: str = REGULAR_MEAL_NAME) -> Template:
+def regular_meal_template(name: str = REGULAR_MEAL_NAME, legacy: bool = False) -> Template:
     """3 × 5 in label for regular meals: size, then calories and macros on one line."""
     E = make_element
     serif = {"font": "Times", "color": "#000000", "size": 15}
-    els = _meal_header(bold_name=False) + [
-        E("field", 18, 170, 180, 20, field="size", label="Size:", **serif),
-        E("field", 18, 196, 70, 20, field="calories", label="Cals:", **serif),
-        E("field", 90, 196, 40, 20, field="protein_g", label="P:", **serif),
-        E("field", 132, 196, 40, 20, field="carbs_g", label="C:", **serif),
-        E("field", 174, 196, 40, 20, field="fat_g", label="F:", **serif),
+    d = 0 if legacy else 14
+    els = _meal_header(bold_name=False, legacy=legacy) + [
+        E("field", 18, 170 + d, 180, 20, field="size", label="Size:", **serif),
+        E("field", 18, 196 + d, 70, 20, field="calories", label="Cals:", **serif),
+        E("field", 90, 196 + d, 40, 20, field="protein_g", label="P:", **serif),
+        E("field", 132, 196 + d, 40, 20, field="carbs_g", label="C:", **serif),
+        E("field", 174, 196 + d, 40, 20, field="fat_g", label="F:", **serif),
     ]
-    return Template(name=name, page="Label (3 × 5 in)", elements=els, upgrades=["pickup_access", "driver"],
-                    kind=MEAL, meal_for="regular")
+    return Template(name=name, page="Label (3 × 5 in)", elements=els,
+                    upgrades=["pickup_access", "driver"] + ([] if legacy else ["meal_wrap"]), kind=MEAL, meal_for="regular")
 
 
 # -- persistence -------------------------------------------------------------

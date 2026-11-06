@@ -13,7 +13,7 @@ from reportlab.pdfgen import canvas as rl_canvas
 
 from . import APP_NAME, storage
 from . import template as T
-from .layout import ascent, fit_text, inner_box, items_primitives, line_width, pdf_font
+from .layout import ascent, fit_text, inner_box, items_primitives, line_width, pdf_font, text_top
 from .delivery_list import draw_delivery_list
 from .drivers import is_pickup, make_plan
 from .mapping import ITEMS_KEY, Mapping
@@ -102,7 +102,7 @@ def draw_page(c, template: Template, values: dict[str, str], mapping: Mapping, i
         lay = fit_text(text, el["font"], el["bold"], el["italic"], el["size"], iw, ih, el.get("shrink", True))
         c.setFillColor(_color(resolve_color(el.get("color", "#000000"), brand) or "#000000"))
         c.setFont(lay.font, lay.size)
-        base = iy + ascent(lay.font, lay.size)
+        base = iy + text_top(el, lay, ih) + ascent(lay.font, lay.size)
         for i, line in enumerate(lay.lines):
             ly = page_h - (base + i * lay.leading)
             if el["align"] == "center":

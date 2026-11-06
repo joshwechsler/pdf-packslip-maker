@@ -112,6 +112,13 @@ def fit_text(text: str, family: str, bold: bool, italic: bool, size: float,
     return TextLayout(lines=lines, font=font, size=size)
 
 
+def text_top(el: dict, layout: "TextLayout", height: float) -> float:
+    """How far down the box the first line starts: 0, or half the spare room when centred vertically."""
+    if el.get("valign") != "middle":
+        return 0.0
+    return max(0.0, (height - len(layout.lines) * layout.leading) / 2)
+
+
 def line_width(line: str, layout: TextLayout) -> float:
     return stringWidth(line, layout.font, layout.size)
 

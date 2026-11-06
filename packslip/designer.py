@@ -19,7 +19,7 @@ from PIL import Image, ImageTk
 
 from . import fonts, storage
 from . import template as T
-from .layout import ascent, fit_text, inner_box, items_primitives
+from .layout import ascent, fit_text, inner_box, items_primitives, text_top
 from .mapping import COMPUTED_KEYS, ITEMS_KEY, Mapping, copy_mapping, delete_mapping, load_mapping, rename_mapping
 from .drivers import is_pickup
 from .pdfgen import item_total, bag_count, render_preview_pdf
@@ -394,10 +394,11 @@ class Designer(tk.Toplevel):
             lay = fit_text(text, el["font"], el["bold"], el["italic"], el["size"], iw, ih, el.get("shrink", True))
             f = self._font(el["font"], int(round(lay.size * s)), el["bold"], el["italic"])
             asc_pdf = ascent(lay.font, lay.size)
+            top = text_top(el, lay, ih)
             tk_asc = f.metrics("ascent")
             color = T.resolve_color(el.get("color", "#000000"), brand) or "#000000"
             for i, line in enumerate(lay.lines):
-                base_y = self.oy + (iy + asc_pdf + i * lay.leading) * s
+                base_y = self.oy + (iy + top + asc_pdf + i * lay.leading) * s
                 y = base_y - tk_asc
                 if el["align"] == "right":
                     cv.create_text(self.ox + (ix + iw) * s, y, text=line, anchor="ne", font=f, fill=color)
@@ -845,6 +846,11 @@ class Designer(tk.Toplevel):
             cb.grid(row=row[0], column=0, columnspan=2, sticky="w")
             row[0] += 1
             bind_var(shrink, "shrink")
+            middle = tk.BooleanVar(value=el.get("valign") == "middle")
+            ttk.Checkbutton(grid, text="Center vertically in the box", variable=middle).grid(
+                row=row[0], column=0, columnspan=2, sticky="w")
+            row[0] += 1
+            bind_var(middle, "valign", lambda v: "middle" if v else "top")
         if t == "field":
             split = tk.BooleanVar(value=el.get("split_lines", False))
             bullets = tk.BooleanVar(value=el.get("bullets", False))
