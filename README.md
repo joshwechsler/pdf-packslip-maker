@@ -349,3 +349,15 @@ Oswald has no italic) and any fonts added with **Add Font…** (`packslip/fonts.
   this Mac doesn't have keeps the name, prints that text in Helvetica, and warns before generating.
 - On the Mac the fonts are registered for the app only (CoreText, process scope), so the designer
   preview draws them without installing anything system-wide.
+
+## Settings and the ⓘ help icons
+
+**Settings** (top right, next to Templates) has three tabs, saved in `settings.json` on that Mac only:
+- **Help text (?)**: what each ⓘ on the main window shows (`packslip/help_text.py`): the three file
+  boxes (under Browse…), the delivery date, and each job (Delivery report, Pack slips, Bag labels,
+  Meal labels). Hover an ⓘ for a tooltip, click it for a small window. A spot never edited shows its
+  starter text (**Starter text** puts it back); one saved blank hides its ⓘ.
+- **Google Drive**: the folder for each kind of file (same as the Save to Google Drive button's choice).
+- **Password**: optional; once set, Settings asks for it. Stored as a salted hash (`packslip/password.py`).
+  It only guards Settings. Forgotten: quit the app, open `~/Library/Application Support/Packs Be Slippin'/settings.json`
+  and delete the `"settings_password"` entry.

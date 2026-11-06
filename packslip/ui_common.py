@@ -223,3 +223,69 @@ def ask_choice(parent, title: str, message: str, choices: list[str]) -> int | No
     make_modal(win)
     parent.wait_window(win)
     return result[0]
+
+
+class HelpIcon(tk.Label):
+    """A small ⓘ: hover shows the text, click opens it in a little window that stays.
+    The text comes from get_text() each time; when it's blank the icon is invisible."""
+
+    def __init__(self, parent, get_text, title: str, background: str | None = None):
+        if background is None:
+            from tkinter import ttk
+            background = ttk.Style(parent).lookup("TFrame", "background") or parent.cget("background")
+        super().__init__(parent, text="", background=background, foreground="#1F5FAD",
+                         font=("Helvetica", 14), cursor="hand2", padx=2, pady=0)
+        self.get_text, self.title = get_text, title
+        self._tip: tk.Toplevel | None = None
+        self._after = None
+        self.bind("<Enter>", lambda e: self._schedule())
+        self.bind("<Leave>", lambda e: self._hide())
+        self.bind("<Button-1>", lambda e: self._open())
+        self.refresh()
+
+    def refresh(self) -> None:
+        self.configure(text="ⓘ" if self.get_text().strip() else "",
+                       cursor="hand2" if self.get_text().strip() else "")
+
+    def _schedule(self):
+        if self.get_text().strip():
+            self._after = self.after(250, self._show)
+
+    def _show(self):
+        self._hide()
+        tip = self._tip = tk.Toplevel(self)
+        tip.wm_overrideredirect(True)
+        tk.Label(tip, text=self.get_text(), justify="left", wraplength=320, background="#FFFDE7",
+                 foreground="#222222", relief="solid", borderwidth=1, padx=8, pady=6,
+                 font=("Helvetica", 12)).pack()
+        tip.update_idletasks()
+        x = self.winfo_rootx() + self.winfo_width() // 2 - tip.winfo_reqwidth() // 2
+        x = max(4, min(x, self.winfo_screenwidth() - tip.winfo_reqwidth() - 4))
+        tip.geometry(f"+{x}+{self.winfo_rooty() + self.winfo_height() + 4}")
+
+    def _hide(self):
+        if self._after:
+            self.after_cancel(self._after)
+            self._after = None
+        if self._tip is not None:
+            self._tip.destroy()
+            self._tip = None
+
+    def _open(self):
+        text = self.get_text().strip()
+        if not text:
+            return
+        self._hide()
+        from tkinter import ttk
+        win = tk.Toplevel(self)
+        win.title(self.title)
+        win.transient(self.winfo_toplevel())
+        win.resizable(False, False)
+        f = ttk.Frame(win, padding=18)
+        f.pack(fill="both", expand=True)
+        ttk.Label(f, text=self.title, font=("Helvetica", 14, "bold")).pack(anchor="w")
+        ttk.Label(f, text=text, wraplength=420, justify="left").pack(anchor="w", pady=(6, 14))
+        ttk.Button(f, text="Close", command=win.destroy, default="active").pack(anchor="e")
+        win.bind("<Escape>", lambda e: win.destroy())
+        win.bind("<Return>", lambda e: win.destroy())
+        center_on(win, self.winfo_toplevel())

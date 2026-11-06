@@ -105,9 +105,16 @@ def _selftest_gui() -> int:
     menus = [w for w in widgets(dlg) if isinstance(w, ttk.Menubutton)]
     dlg._save()
     ok = not combos and len(menus) > 10 and dlg.result is not None and dlg.result.items_mode == "rows"
+
+    from .settings_window import SettingsDialog
+    sd = SettingsDialog(root, app.settings)
+    sd.update()
+    sd.destroy()
+    icons = sum(1 for i in app.help_icons if i.cget("text"))
+    ok = ok and icons == 8
     root.destroy()
     print(f"selftest-gui: {'OK' if ok else 'FAIL'} (drag-and-drop {'available' if dnd else 'unavailable'}; "
-          f"matching screen menus={len(menus)} comboboxes={len(combos)})")
+          f"matching screen menus={len(menus)} comboboxes={len(combos)}; help icons={icons})")
     return 0 if ok else 1
 
 

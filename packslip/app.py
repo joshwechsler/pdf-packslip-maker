@@ -12,7 +12,7 @@ import traceback
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from . import APP_NAME, __version__, diagnostics, fonts, storage, updater
+from . import APP_NAME, __version__, diagnostics, fonts, help_text, settings_window, storage, updater
 from . import template as T
 from .designer import Designer
 from .drivers import DriverBook, customer_key
@@ -29,7 +29,7 @@ from .datepicker import DatePicker, default_delivery_date, sheet_delivery_date
 from .pdfgen import (GenerateError, blank_line_warnings, font_warnings, check_ready, default_output_path, format_delivery_date,
                      generate_labels, generate_meal_labels, generate_pdf)
 from .spreadsheet import Sheet, SpreadsheetError, load as load_sheet
-from .ui_common import (IS_MAC, ask_choice, ask_name, center_on, disable_combobox_wheel, make_modal, open_path,
+from .ui_common import (IS_MAC, HelpIcon, ask_choice, ask_name, center_on, disable_combobox_wheel, make_modal, open_path,
                         reveal_path)
 
 try:
@@ -164,6 +164,8 @@ class App:
         head = ttk.Frame(outer)
         head.pack(fill="x")
         ttk.Button(head, text="Templates", command=self.open_templates).pack(side="right")
+        ttk.Button(head, text="Settings", command=self.open_settings).pack(side="right", padx=(0, 8))
+        self.help_icons: list[HelpIcon] = []
         ttk.Label(head, text=APP_NAME, font=("Helvetica", 22, "bold"), foreground=ACCENT).pack(side="left")
         ttk.Label(outer, text="Load this week's files, check the date, then generate.",
                   style="Muted.TLabel").pack(anchor="w", pady=(0, 12))
@@ -179,6 +181,7 @@ class App:
             box = _DropBox(files, title, hint, browse=lambda s=slot: self.browse(s), dnd=self.dnd)
             box.grid(row=0, column=col, sticky="nsew", padx=(0 if col == 0 else 8, 0))
             self.boxes[slot] = box
+            self._help(box.body, slot, title, background=DROP_BG).pack(before=box.status, pady=(2, 0))
             if self.dnd:
                 box.register_drop(lambda path, s=slot: self.load_file(path, slot=s))
         self.sheet_var = tk.StringVar()  # workbooks with several sheets: which one
@@ -192,15 +195,18 @@ class App:
         self.date_picker = DatePicker(date_row, default_delivery_date(self._usual_weekday(self.settings.get("template", ""))),
                                       command=self._delivery_chosen)
         self.date_picker.pack(side="left", padx=10)
+        self._help(date_row, "date", "Delivery date").pack(side="left")
 
         # One row per job: what it is, which template, a setting link, and its Generate button.
         jobs = ttk.Frame(outer)
         jobs.pack(fill="x", pady=(10, 0))
         jobs.columnconfigure(1, weight=1)
 
-        def job(row, title):
-            ttk.Label(jobs, text=title, style="Job.TLabel").grid(row=row, column=0, sticky="w", pady=(8, 0),
-                                                                 padx=(0, 12))
+        def job(row, title, key):
+            cell = ttk.Frame(jobs)
+            cell.grid(row=row, column=0, sticky="w", pady=(8, 0), padx=(0, 12))
+            ttk.Label(cell, text=title, style="Job.TLabel").pack(side="left")
+            self._help(cell, key, title).pack(side="left", padx=(2, 0))
 
         def link(parent, text, command):
             lbl = ttk.Label(parent, text=text, style="Link.TLabel", cursor="hand2")
@@ -212,7 +218,7 @@ class App:
             c.bind("<<ComboboxSelected>>", lambda e: on_pick())
             return c
 
-        job(0, "Delivery report")
+        job(0, "Delivery report", "report")
         link(jobs, "Pickup locations", self.pickup_locations).grid(row=0, column=2, sticky="e", padx=10, pady=(8, 0))
         self.report_btn = ttk.Button(jobs, text="Generate Delivery Report", command=self.generate_delivery_report,
                                      width=22)
@@ -220,7 +226,7 @@ class App:
         ttk.Label(jobs, text="For the delivery software: upload it, add drivers, then drop it back in as the "
                              "driver list.", style="Muted.TLabel").grid(row=1, column=1, columnspan=3, sticky="w")
 
-        job(2, "Pack slips")
+        job(2, "Pack slips", "slips")
         self.tpl_var = tk.StringVar()
         self.tpl_combo = combo(jobs, self.tpl_var, self._template_chosen)
         self.tpl_combo.grid(row=2, column=1, sticky="w", pady=(8, 0))
@@ -230,14 +236,14 @@ class App:
         self.map_status = ttk.Label(jobs, text="", style="Muted.TLabel")
         self.map_status.grid(row=3, column=1, columnspan=3, sticky="w")
 
-        job(4, "Bag labels")
+        job(4, "Bag labels", "bags")
         self.label_var = tk.StringVar()
         self.label_combo = combo(jobs, self.label_var, self._label_chosen)
         self.label_combo.grid(row=4, column=1, sticky="w", pady=(8, 0))
         self.label_btn = ttk.Button(jobs, text="Generate Bag Labels", command=self.generate_labels, width=22)
         self.label_btn.grid(row=4, column=3, sticky="ew", pady=(8, 0))
 
-        job(5, "Meal labels")
+        job(5, "Meal labels", "meal_labels")
         meal_tpls = ttk.Frame(jobs)  # custom and regular meals each have their own template
         meal_tpls.grid(row=5, column=1, sticky="w", pady=(8, 0))
         self.meal_custom_var, self.meal_regular_var = tk.StringVar(), tk.StringVar()
@@ -268,6 +274,17 @@ class App:
         if self.dnd:  # dropped anywhere else on the window: sort it into the right box
             self.root.drop_target_register(DND_FILES)
             self.root.dnd_bind("<<Drop>>", self._on_drop)
+
+    def _help(self, parent, key: str, title: str, background: str | None = None) -> HelpIcon:
+        icon = HelpIcon(parent, lambda: help_text.get(self.settings, key), title, background=background)
+        self.help_icons.append(icon)
+        return icon
+
+    def open_settings(self):
+        if not settings_window.unlock(self.root, self.settings):
+            return
+        settings_window.SettingsDialog(self.root, self.settings,
+                                       on_saved=lambda: [i.refresh() for i in self.help_icons])
 
     # ------------------------------------------------------- spreadsheets
     def _on_drop(self, event):
