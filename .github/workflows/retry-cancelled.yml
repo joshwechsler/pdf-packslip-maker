@@ -1,0 +1,35 @@
+name: Retry cancelled build
+
+# GitHub sometimes cancels a macOS build in its first second, before it gets a Mac (runner capacity).
+# When that happens to the newest build on a branch, re-run it once, after a short wait.
+# (GitHub runs workflow_run workflows from the default branch's copy of this file.)
+on:
+  workflow_run:
+    workflows: ["Build macOS app"]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  retry:
+    if: github.event.workflow_run.conclusion == 'cancelled' && github.event.workflow_run.run_attempt == 1
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-run it if it's still the newest commit on its branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          head=$(gh api "repos/$REPO/branches/$BRANCH" --jq .commit.sha)
+          if [ "$head" != "$SHA" ]; then
+            echo "A newer commit is on $BRANCH; its own build replaces this one. Not re-running."
+            exit 0
+          fi
+          sleep 60
+          gh run rerun "$RUN_ID" --repo "$REPO"
+          echo "Re-ran build $RUN_ID for $SHA."
